@@ -60,6 +60,19 @@ const local = {
   load() { try { return JSON.parse(localStorage.getItem(LKEY)) || {}; } catch (_) { return {}; } },
   save(o) { localStorage.setItem(LKEY, JSON.stringify(o)); },
 };
+/* 資料庫還沒加新欄位時，自動拿掉那個欄位重試，避免整筆存不進去 */
+async function withColumnFallback(obj, run) {
+  let o = { ...obj };
+  for (let i = 0; i < 4; i++) {
+    const { data, error } = await run(o);
+    if (!error) return data;
+    const m = /Could not find the '([^']+)' column/.exec(error.message || '') || /column "?([a-z_]+)"? .*does not exist/.exec(error.message || '');
+    if (!m || !(m[1] in o)) throw error;
+    console.warn('missing column, retry without', m[1]); S.missingCols = [...new Set([...(S.missingCols || []), m[1]])];
+    delete o[m[1]];
+  }
+  throw new Error('儲存失敗');
+}
 const DB = {
   async list(t) {
     if (!CLOUD) return local.load()[t] || [];
@@ -75,13 +88,11 @@ const DB = {
     row = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...row };
     if (!CLOUD) { const o = local.load(); (o[t] ||= []).push(row); local.save(o); return row; }
     row.user_id = user.id;
-    const { data, error } = await sb.from(t).insert(row).select().single();
-    if (error) throw error; return data;
+    return withColumnFallback(row, r => sb.from(t).insert(r).select().single());
   },
   async update(t, id, patch) {
     if (!CLOUD) { const o = local.load(); const r = (o[t] || []).find(x => x.id === id); Object.assign(r, patch); local.save(o); return r; }
-    const { data, error } = await sb.from(t).update(patch).eq('id', id).select().single();
-    if (error) throw error; return data;
+    return withColumnFallback(patch, p => sb.from(t).update(p).eq('id', id).select().single());
   },
   async remove(t, id) {
     if (!CLOUD) { const o = local.load(); o[t] = (o[t] || []).filter(x => x.id !== id); local.save(o); return; }
@@ -125,7 +136,17 @@ function initialSettled(c) { // 新增卡片時：最近一期「已經扣過款
   for (let i = 0; i < 3 && !debitReached(c, ymd(e)); i++) e = prevCycleEnd(+c.closing_day, e);
   return ymd(e);
 }
+/* 改結帳日的過渡期：cycle_start ~ first_close 之間原本的結帳日都不算（例如 9/10 起的消費全部併入 10/29 帳單） */
+const isSkippedClose = (c, E) => !!(c.first_close && c.cycle_start && E >= String(c.cycle_start).slice(0, 10) && E < String(c.first_close).slice(0, 10));
+function closeOnOrAfter(c, ref) { let e = cycleEndOnOrAfter(+c.closing_day, ref), g = 0; while (isSkippedClose(c, ymd(e)) && g++ < 12) e = nextCycleAfter(+c.closing_day, ymd(e)); return e; }
+function closeAfter(c, E) { let e = nextCycleAfter(+c.closing_day, E), g = 0; while (isSkippedClose(c, ymd(e)) && g++ < 12) e = nextCycleAfter(+c.closing_day, ymd(e)); return e; }
+function closeBefore(c, e) { let p = prevCycleEnd(+c.closing_day, e), g = 0; while (isSkippedClose(c, ymd(p)) && g++ < 12) p = prevCycleEnd(+c.closing_day, p); return p; }
 const txnDate = t => ymd(new Date(t.txn_at));
+const billAmt = t => num(t.amount_twd) + num(t.fee); // 帳單金額 = 消費 + 國外交易手續費
+const FEE_RE = /手續費|foreign\s*(transaction)?\s*fee|fx\s*fee/i;
+const NO_REWARD_RE = /手續費|現金回饋|回饋金|折抵|年費|利息|違約金/i;
+const isFeeRow = t => FEE_RE.test(t.merchant || '');
+const feeRate = c => (c && c.fx_fee != null && c.fx_fee !== '') ? num(c.fx_fee) : 1.5;
 const unsettled = cardId => S.transactions.filter(t => t.card_id === cardId && !t.settled_cycle);
 const byTimeDesc = (a, b) => b.txn_at.localeCompare(a.txn_at);
 const daysUntil = d => Math.round((d - todayDate()) / 864e5);
@@ -133,15 +154,17 @@ const daysUntil = d => Math.round((d - todayDate()) / 864e5);
 /* 一張卡的狀態：open = 還在累計的本期；billed = 已結帳、等扣款的帳單；next = 下一次扣款 */
 function cardState(c) {
   const today = todayDate();
-  const openEnd = cycleEndOnOrAfter(+c.closing_day, today);
-  const openStart = prevCycleEnd(+c.closing_day, openEnd); openStart.setDate(openStart.getDate() + 1);
+  const openEnd = closeOnOrAfter(c, today);
+  const prevClose = closeBefore(c, openEnd);
+  const openStart = new Date(prevClose); openStart.setDate(openStart.getDate() + 1);
   const OE = ymd(openEnd);
+  if (c.cycle_start && OE === String(c.first_close || '').slice(0, 10)) { const cs = parseYmd(c.cycle_start); if (cs > openStart) openStart.setTime(cs.getTime()); }
   const all = unsettled(c.id);
-  const lastClosed = ymd(prevCycleEnd(+c.closing_day, openEnd));
+  const lastClosed = ymd(prevClose);
   const billedItems = all.filter(t => txnDate(t) <= lastClosed).sort(byTimeDesc);
   const openItems = all.filter(t => txnDate(t) > lastClosed && txnDate(t) <= OE).sort(byTimeDesc);
-  const open = { start: ymd(openStart), end: OE, items: openItems, total: sum(openItems, t => num(t.amount_twd)), due: dueFor(c, OE) };
-  const billed = billedItems.length ? { end: lastClosed, items: billedItems, total: sum(billedItems, t => num(t.amount_twd)), due: dueFor(c, lastClosed) } : null;
+  const open = { start: ymd(openStart), end: OE, items: openItems, total: sum(openItems, billAmt), due: dueFor(c, OE) };
+  const billed = billedItems.length ? { end: lastClosed, items: billedItems, total: sum(billedItems, billAmt), due: dueFor(c, lastClosed) } : null;
   const nb = billed || open;
   const next = { date: nb.due, days: daysUntil(nb.due), amount: nb.total, final: !!billed, closeDays: daysUntil(openEnd) };
   return { open, billed, next };
@@ -154,11 +177,11 @@ async function runSettlements() {
   try {
     for (const c of S.cards) {
       if (!c.last_settled) { await upd('cards', c.id, { last_settled: initialSettled(c) }); continue; }
-      let e = nextCycleAfter(+c.closing_day, String(c.last_settled).slice(0, 10)), guard = 0;
+      let e = closeAfter(c, String(c.last_settled).slice(0, 10)), guard = 0;
       while (debitReached(c, ymd(e)) && guard++ < 36) {
         const E = ymd(e), D = ymd(dueFor(c, E));
         const items = unsettled(c.id).filter(t => txnDate(t) <= E);
-        const amt = Math.round(sum(items, t => num(t.amount_twd)) * 100) / 100;
+        const amt = Math.round(sum(items, billAmt) * 100) / 100;
         if (items.length) {
           let ok = true;
           try {
@@ -177,7 +200,7 @@ async function runSettlements() {
           }
         }
         await upd('cards', c.id, { last_settled: E });
-        e = nextCycleAfter(+c.closing_day, E);
+        e = closeAfter(c, E);
       }
     }
   } finally { settling = false; }
@@ -332,7 +355,7 @@ function totals() {
   const bank = sum(S.accounts, a => { const v = toTWD(num(a.balance), a.currency); return Number.isFinite(v) ? v : 0; });
   const stock = sum(stockRows(), r => r.value || 0);
   const crypto = sum(cryptoRows(), r => r.value || 0);
-  const debt = sum(S.transactions.filter(t => !t.settled_cycle), t => num(t.amount_twd));
+  const debt = sum(S.transactions.filter(t => !t.settled_cycle), billAmt);
   const recv = sum(S.receivables.filter(r => !r.received_at), r => num(r.amount));
   const liab = sum(S.liabilities, l => Math.max(0, num(l.balance)));
   return { bank, stock, crypto, recv, debt, liab, net: bank + stock + crypto + recv - debt - liab };
@@ -375,7 +398,7 @@ const ruleId = () => 'r' + Math.random().toString(36).slice(2, 8);
 const pct = v => (Math.round(v * 100) / 100) + '%';
 
 function ruleMatches(r, t) {
-  if (r.on === false || t.source === 'installment') return false; // 分期不享回饋
+  if (r.on === false || t.source === 'installment' || NO_REWARD_RE.test(t.merchant || '')) return false; // 分期、手續費不享回饋
   if (!(WHERE[r.where || 'all'] || WHERE.all)[1](t)) return false;
   if (!(PAYS[r.pay || 'any'] || PAYS.any)[1](txnPay(t))) return false;
   if (r.min && Math.abs(num(t.amount_twd)) < r.min) return false;
@@ -414,7 +437,7 @@ function cardRewards(c, extra) {
   for (const t of txns) {
     const amt = num(t.amount_twd);
     const d = new Date(t.txn_at);
-    const cyc = ymd(cycleEndOnOrAfter(+c.closing_day, parseYmd(ymd(d))));
+    const cyc = ymd(closeOnOrAfter(c, parseYmd(ymd(d))));
     const prev = monthSpend[monthKey(new Date(d.getFullYear(), d.getMonth() - 1, 1))] || 0;
     const C = cycles[cyc] ||= { total: 0, rules: {} };
     const parts = [];
@@ -578,8 +601,169 @@ function openRecommend() {
   draw();
 }
 
+/* 提早繳款：把已出帳單標成已繳，不再等扣款日 */
+function formPaidBill(c) {
+  const st = cardState(c), bl = st.billed; if (!bl) return;
+  const acc = S.accounts.find(a => a.id === c.debit_account_id);
+  openForm({
+    title: `${c.name}：${md(bl.end)} 帳單已繳`, note: `<p class="muted" style="margin-top:-6px">${money(bl.total)}，原訂 ${md(ymd(bl.due))} 扣款</p>`,
+    data: { mode: 'mark' },
+    fields: [{ k: 'mode', label: '帳戶餘額要怎麼處理？', type: 'select', options: [
+      ['mark', '只標記已繳（我填的帳戶餘額已經是繳完後的）'],
+      ...(acc ? [['deduct', `從 ${acc.name} 扣除 ${money(bl.total)}`]] : []),
+    ] }],
+    onSave: async v => {
+      const E = bl.end, amt = Math.round(bl.total * 100) / 100;
+      try { await add('settlements', { card_id: c.id, cycle_end: E, amount: amt, account_id: acc?.id || null }); } catch (_) { /* 已有紀錄 */ }
+      if (v.mode === 'deduct' && acc) {
+        const delta = -fromTWD(amt, acc.currency), after = Math.round((num(acc.balance) + delta) * 100) / 100;
+        await upd('accounts', acc.id, { balance: after });
+        await add('balance_log', { account_id: acc.id, delta, balance_after: after, note: `${c.name} ${md(E)} 帳單（提早繳款）` });
+      }
+      for (const t of bl.items) await upd('transactions', t.id, { settled_cycle: E });
+      if (!c.last_settled || String(c.last_settled).slice(0, 10) < E) await upd('cards', c.id, { last_settled: E });
+      toast(`已標記 ${md(E)} 帳單繳清，下次扣款 ${md(ymd(st.open.due))}`);
+    },
+  });
+}
+
+/* ---------------- 匯入刷卡紀錄（CSV） ----------------
+ * 欄位：日期,卡片,商家,金額,幣別,台幣金額,海外,支付方式,手續費
+ * 只有前四欄必填；卡片名稱可以只寫一部分（例如 MaiCoin、星展）。
+ */
+function parseCSV(text) {
+  const rows = []; let row = [], cur = '', q = false;
+  text = text.replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"' && text[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',' || ch === '\t') { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; }
+    else cur += ch;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+const HEAD = { 日期: 'date', 入帳日: 'date', 消費日: 'date', 卡片: 'card', 信用卡: 'card', 商家: 'merchant', 摘要: 'merchant', 說明: 'merchant', 金額: 'amount', 幣別: 'currency', 台幣金額: 'twd', 海外: 'overseas', 支付方式: 'pay', 手續費: 'fee' };
+function matchCard(txt) {
+  const n = String(txt || '').toLowerCase().replace(/\s/g, '');
+  if (!n) return null;
+  return S.cards.find(c => [c.name, c.wallet_name].filter(Boolean).some(k => { const kk = k.toLowerCase().replace(/\s/g, ''); return n.includes(kk) || kk.includes(n); })) || null;
+}
+function parseImport(text) {
+  const rows = parseCSV(text); if (!rows.length) return { items: [], errors: ['沒有資料'] };
+  const head = rows[0].map(h => HEAD[h.trim()] || h.trim().toLowerCase());
+  const hasHead = head.includes('date') && head.includes('amount');
+  const keys = hasHead ? head : ['date', 'card', 'merchant', 'amount', 'currency', 'twd', 'overseas', 'pay', 'fee'];
+  const items = [], errors = [];
+  (hasHead ? rows.slice(1) : rows).forEach((r, i) => {
+    const o = {}; keys.forEach((k, j) => o[k] = (r[j] || '').trim());
+    const line = i + (hasHead ? 2 : 1);
+    const dm = o.date.replace(/[年月.]/g, '/').replace(/日/g, '').match(/(\d{2,4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+    if (!dm) { errors.push(`第 ${line} 行：看不懂日期「${o.date}」`); return; }
+    let y = +dm[1]; if (y < 1911 && y > 99) y += 1911; if (y < 100) y += 2000; // 民國年
+    const amount = parseFloat(String(o.amount).replace(/[,\s$NT元]/g, ''));
+    if (!Number.isFinite(amount)) { errors.push(`第 ${line} 行：看不懂金額「${o.amount}」`); return; }
+    const card = matchCard(o.card);
+    if (!card) { errors.push(`第 ${line} 行：對不到卡片「${o.card}」`); return; }
+    const currency = (o.currency || 'TWD').toUpperCase();
+    const twd = o.twd ? parseFloat(o.twd.replace(/,/g, '')) : currency === 'TWD' ? amount : Math.round(toTWD(amount, currency) * 100) / 100;
+    const overseas = /^(1|y|yes|true|是|v|✓|海外)$/i.test(o.overseas || '') || currency !== 'TWD';
+    const at = new Date(y, +dm[2] - 1, +dm[3], 12);
+    const feeRow = FEE_RE.test(o.merchant);
+    const fee = o.fee !== undefined && o.fee !== '' ? parseFloat(o.fee) : (overseas && !feeRow ? Math.round(Math.abs(twd) * feeRate(card) / 100) * Math.sign(twd || 1) : 0);
+    const pay = ({ 'apple pay': 'applepay', applepay: 'applepay', 'line pay': 'linepay', linepay: 'linepay', 'google pay': 'googlepay' })[(o.pay || '').toLowerCase()] || (/line\s*pay/i.test(o.merchant) ? 'linepay' : 'card');
+    items.push({ card, row: { card_id: card.id, card_label: card.name, merchant: o.merchant, amount, currency, amount_twd: twd, fee, pay, txn_at: at.toISOString(), source: 'import' } });
+  });
+  return { items, errors };
+}
+function isDup(r) {
+  return S.transactions.some(t => t.card_id === r.card_id && txnDate(t) === ymd(new Date(r.txn_at)) && Math.abs(num(t.amount_twd) - num(r.amount_twd)) < 0.01 && (t.merchant || '').trim() === (r.merchant || '').trim());
+}
+function openImport() {
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><h3>匯入刷卡紀錄</h3>
+    <p class="meta" style="margin-top:-8px">選 Claude 整理好的 CSV 檔，或直接貼上內容。第一行是標題：日期,卡片,商家,金額,幣別,台幣金額,海外,支付方式</p>
+    <label class="btn" style="margin:6px 0 10px;color:var(--text)">選擇 CSV 檔<input type="file" accept=".csv,text/csv,text/plain" id="impFile" hidden></label>
+    <label>或貼上內容<textarea id="impText" rows="6" style="font-size:13px;font-family:ui-monospace,Menlo,monospace" placeholder="日期,卡片,商家,金額\n2026/10/04,MaiCoin,APPLE.COM/BILL,1180"></textarea></label>
+    <div id="impPrev" class="meta"></div>
+    <div class="actions"><button class="btn ghost" data-f="close">取消</button><button class="btn primary" id="impGo" disabled>匯入</button></div></div>`;
+  m.hidden = false;
+  const close = () => { m.hidden = true; m.innerHTML = ''; };
+  m.onclick = e => { if (e.target === m || e.target.dataset.f === 'close') close(); };
+  let parsed = null;
+  const preview = () => {
+    parsed = parseImport($('#impText').value);
+    const fresh = parsed.items.filter(x => !isDup(x.row));
+    const past = fresh.filter(x => x.card.last_settled && ymd(new Date(x.row.txn_at)) <= String(x.card.last_settled).slice(0, 10)).length;
+    const byCard = {}; fresh.forEach(x => byCard[x.card.name] = (byCard[x.card.name] || 0) + billAmt(x.row));
+    $('#impPrev').innerHTML = `${fresh.length ? `可匯入 <b>${fresh.length}</b> 筆：${Object.entries(byCard).map(([k, v]) => `${esc(k)} ${money(v)}`).join('、')}` : '還沒有可匯入的資料'}
+      ${parsed.items.length - fresh.length ? `<br>略過 ${parsed.items.length - fresh.length} 筆重複` : ''}
+      ${past ? `<br>${past} 筆落在已扣款的帳單週期，會直接標記為已繳` : ''}
+      ${parsed.errors.length ? `<br><span class="neg">${parsed.errors.slice(0, 6).map(esc).join('<br>')}${parsed.errors.length > 6 ? `<br>…還有 ${parsed.errors.length - 6} 個問題` : ''}</span>` : ''}`;
+    $('#impGo').disabled = !fresh.length;
+  };
+  $('#impText').oninput = preview;
+  $('#impFile').onchange = async e => { $('#impText').value = await e.target.files[0].text(); preview(); };
+  $('#impGo').onclick = async () => {
+    const fresh = parsed.items.filter(x => !isDup(x.row));
+    $('#impGo').disabled = true; $('#impGo').textContent = '匯入中…';
+    let n = 0;
+    try {
+      for (const x of fresh) {
+        const r = { ...x.row };
+        if (x.card.last_settled && ymd(new Date(r.txn_at)) <= String(x.card.last_settled).slice(0, 10)) r.settled_cycle = 'past';
+        await add('transactions', r); n++;
+      }
+      close(); render(); toast(`已匯入 ${n} 筆刷卡紀錄`);
+    } catch (err) { toast(`匯入到第 ${n + 1} 筆時失敗：${err.message}`); $('#impGo').disabled = false; $('#impGo').textContent = '匯入'; }
+  };
+}
+
+/* ---------------- 帳戶轉帳 ---------------- */
+function formTransfer(from) {
+  if (S.accounts.length < 2) { toast('至少要有兩個帳戶才能轉帳'); return; }
+  const opts = S.accounts.map(a => [a.id, `${a.name}（${money(num(a.balance), a.currency)}）`]);
+  openForm({
+    title: '帳戶轉帳', data: { from: from?.id || S.accounts[0].id, to: S.accounts.find(a => a.id !== (from?.id || S.accounts[0].id))?.id, date: todayStr() },
+    fields: [
+      { k: 'from', label: '轉出帳戶', type: 'select', options: opts },
+      { k: 'to', label: '轉入帳戶', type: 'select', options: opts },
+      { k: 'amount', label: '轉出金額（轉出帳戶的幣別）', type: 'number', req: 1 },
+      { k: 'to_amount', label: '轉入金額（幣別不同時填，例如換匯後實際入帳）', type: 'number', hint: '留空：同幣別等於轉出金額；不同幣別依即時匯率換算' },
+      { k: 'fee', label: '手續費（從轉出帳戶扣，選填）', type: 'number', hint: '跨行轉帳常見 NT$10–15' },
+      { k: 'note', label: '備註', ph: '例：存到大戶、換美金' },
+    ],
+    onSave: async v => {
+      const A = S.accounts.find(a => a.id === v.from), B = S.accounts.find(a => a.id === v.to);
+      if (!A || !B || A.id === B.id) throw new Error('轉出和轉入要選不同帳戶');
+      if (!(v.amount > 0)) throw new Error('金額要大於 0');
+      const inAmt = v.to_amount != null ? v.to_amount : (A.currency === B.currency ? v.amount : Math.round(fromTWD(toTWD(v.amount, A.currency), B.currency) * 100) / 100);
+      if (!Number.isFinite(inAmt)) throw new Error('抓不到匯率，請手動填轉入金額');
+      const fee = num(v.fee);
+      const aAfter = Math.round((num(A.balance) - v.amount - fee) * 100) / 100;
+      const bAfter = Math.round((num(B.balance) + inAmt) * 100) / 100;
+      const tag = v.note ? `・${v.note}` : '';
+      await upd('accounts', A.id, { balance: aAfter });
+      await add('balance_log', { account_id: A.id, delta: -(v.amount + fee), balance_after: aAfter, note: `轉帳 → ${B.name}${fee ? `（含手續費 ${fee}）` : ''}${tag}` });
+      await upd('accounts', B.id, { balance: bAfter });
+      await add('balance_log', { account_id: B.id, delta: inAmt, balance_after: bAfter, note: `轉帳 ← ${A.name}${tag}` });
+      toast(`已從 ${A.name} 轉 ${money(v.amount, A.currency)} 到 ${B.name}`);
+    },
+  });
+}
+
 /* ---------------- 應收款與分期／負債 ---------------- */
 function addMonths(dateStr, n, day) { const d = parseYmd(dateStr); return mkDay(d.getFullYear(), d.getMonth() + n, day || d.getDate()); }
+/* 捷徑記進來的外幣交易，自動補上預估的國外交易手續費 */
+async function autoFees() {
+  for (const t of S.transactions) {
+    if (t.fee != null || t.settled_cycle || t.source !== 'shortcut' || (t.currency || 'TWD') === 'TWD' || isFeeRow(t)) continue;
+    const c = S.cards.find(x => x.id === t.card_id);
+    await upd('transactions', t.id, { fee: Math.round(Math.abs(num(t.amount_twd)) * feeRate(c) / 100) });
+  }
+}
 let installing = false;
 async function runInstallments() {
   if (installing || !S.liabilities.length) return; installing = true;
@@ -745,7 +929,7 @@ function txnRow(t) {
     <div class="grow"><div class="title">${esc(t.merchant || '（未填商家）')}</div>
       <div class="meta">${new Date(t.txn_at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${c ? esc(c.name) : `<span class="warn">${esc(t.card_label || '未對應卡片')}</span>`}
       ${t.source === 'shortcut' ? ' · <span class="chip">捷徑</span>' : ''}${t.settled_cycle ? ' · <span class="chip">已扣款</span>' : ''}</div></div>
-    <div class="right"><div class="num">${money(num(t.amount_twd))}</div>${foreign ? `<div class="meta num">${money(num(t.amount), t.currency)}</div>` : ''}${rewOf(t.id) > 0.05 ? `<div class="meta rew">回饋 ${money(rewOf(t.id), 'TWD', rewOf(t.id) < 10 ? 1 : 0)}</div>` : ''}</div></div>`;
+    <div class="right"><div class="num">${money(billAmt(t))}</div>${foreign ? `<div class="meta num">${money(num(t.amount), t.currency)}</div>` : ''}${num(t.fee) ? `<div class="meta">含手續費 ${money(num(t.fee))}</div>` : ''}${rewOf(t.id) > 0.05 ? `<div class="meta rew">回饋 ${money(rewOf(t.id), 'TWD', rewOf(t.id) < 10 ? 1 : 0)}</div>` : ''}</div></div>`;
 }
 
 VIEWS.bank = () => {
@@ -762,7 +946,7 @@ VIEWS.bank = () => {
       <div class="right num ${num(l.delta) < 0 ? 'neg' : 'pos'}">${num(l.delta) > 0 ? '+' : ''}${money(num(l.delta), a?.currency)}</div></div>`;
   }).join('');
   return `${S.missingTables.length ? `<div class="banner warn">應收款／負債的資料表還沒建立：請到 Supabase 的 SQL Editor 執行 README 裡「應收款與負債」那段 SQL。</div>` : ''}
-    <h2>銀行帳戶 <button class="btn small" data-act="add-acc">＋ 新增帳戶</button></h2>
+    <h2>銀行帳戶 <button class="btn small" data-act="transfer">⇄ 轉帳</button><button class="btn small" data-act="add-acc">＋ 新增帳戶</button></h2>
     <section class="panel">${rows || '<div class="empty">新增你的第一個帳戶（台幣、外幣帳戶都可以）</div>'}</section>
     ${recvSection()}
     ${liabSection()}
@@ -937,18 +1121,18 @@ function constellation(id) {
 }
 function cardFace(c, i) {
   const st = cardState(c), n = st.next;
-  return `<button class="cc" style="--cc:${esc(c.color || '#c9a96e')}" data-act="cc-select" data-i="${i}" aria-label="${esc(c.name)}">
+  return `<div class="cc" style="--cc:${esc(c.color || '#c9a96e')}">
     ${constellation(c.id)}
     <span class="cc-top"><span class="cc-name">${esc(c.name)}</span><svg class="cc-chip" viewBox="0 0 34 26" aria-hidden="true"><rect x=".5" y=".5" width="33" height="25" rx="5"/><path d="M0 9h11M0 17h11M23 9h11M23 17h11M11 0v26M23 0v26"/></svg></span>
     <span class="cc-mid"><small>${n.final ? `${md(st.billed.end)} 帳單・${md(ymd(n.date))} 扣款` : '本期累計'}</small><b>${money(n.final ? st.billed.total : st.open.total)}</b>${(c.rewards || []).length ? `<em class="cc-rew">本期回饋約 ${money(cycleReward(c, st.open.end).total)}</em>` : ''}</span>
     <span class="cc-bot"><span>${sameDayDebit(c) ? `每月 ${c.closing_day} 日結帳並扣款` : `${c.closing_day} 日結帳・${c.due_day} 日扣款`}</span><span class="${n.days === 0 ? 'warn' : ''}">${n.days === 0 ? '今天扣款' : n.days + ' 天後扣款'}</span></span>
-  </button>`;
+  </div>`;
 }
 function cardDetail(c) {
   if (!c) return '';
   const st = cardState(c), cy = st.open, bl = st.billed;
   const acc = S.accounts.find(a => a.id === c.debit_account_id);
-  const debt = sum(unsettled(c.id), t => num(t.amount_twd));
+  const debt = sum(unsettled(c.id), billAmt);
   const lim = num(c.credit_limit);
   const hist = S.settlements.filter(s => s.card_id === c.id).sort((a, b) => String(b.cycle_end).localeCompare(String(a.cycle_end))).slice(0, 4);
   return `<section class="panel">
@@ -956,7 +1140,8 @@ function cardDetail(c) {
       <div><small>本期區間</small><b>${md(cy.start)}–${md(cy.end)}</b></div>
       <div><small>扣款帳戶</small><b class="small">${acc ? esc(acc.name) : '<span class="warn">未設定</span>'}</b></div>
     </div>
-    ${bl ? `<div class="bill"><div><small>${md(bl.end)} 已出帳單</small><b>${money(bl.total)}</b></div><div class="r"><small>自動扣款</small><b>${md(ymd(bl.due))}</b></div></div>` : ''}
+    ${bl ? `<div class="bill"><div><small>${md(bl.end)} 已出帳單</small><b>${money(bl.total)}</b></div><div class="r"><small>自動扣款</small><b>${md(ymd(bl.due))}</b></div></div>
+      <button class="btn small paid-btn" data-act="paid-bill" data-id="${c.id}">這期已經繳了</button>` : ''}
     <div class="meta" style="margin-top:10px">本期累計 ${money(cy.total)}，${md(cy.end)} 結帳後於 ${md(ymd(cy.due))} 扣款</div>
     ${lim ? `<div class="meta" style="margin-top:12px">額度已用 ${money(debt)}，上限 ${money(lim)}</div><div class="meter"><i style="width:${Math.min(100, debt / lim * 100).toFixed(1)}%${debt / lim > .8 ? ';background:var(--danger)' : ''}"></i></div>` : ''}
     <div class="actions"><button class="btn primary" data-act="add-txn" data-card="${c.id}">記一筆消費</button><button class="btn" data-act="edit-card" data-id="${c.id}">卡片設定</button></div>
@@ -967,31 +1152,50 @@ function cardDetail(c) {
   <section class="panel">${cy.items.map(txnRow).join('') || '<div class="empty">本期還沒有消費</div>'}</section>
   ${hist.length ? `<h2>扣款紀錄</h2><section class="panel">${hist.map(h => `<div class="row"><div class="grow"><div class="title">${md(ymd(dueFor(c, String(h.cycle_end).slice(0, 10))))} 扣款</div><div class="meta">${md(h.cycle_end)} 帳單</div></div><div class="right amt">${money(num(h.amount))}</div></div>`).join('')}</section>` : ''}`;
 }
+function cardTile(c) {
+  const st = cardState(c), n = st.next;
+  const start = parseYmd(st.open.start), end = parseYmd(st.open.end);
+  const prog = Math.min(100, Math.max(0, (todayDate() - start) / (end - start + 864e5) * 100));
+  const rew = (c.rewards || []).length ? cycleReward(c, st.open.end).total : 0;
+  return `<button class="ctile" style="--cc:${esc(c.color || '#b8893a')}" data-act="open-card" data-id="${c.id}">
+    <span class="ct-edge"></span>
+    <span class="ct-main">
+      <span class="ct-name">${esc(c.name)}</span>
+      <span class="ct-sub">${n.final ? `${md(st.billed.end)} 帳單已出` : `本期累計中・${n.closeDays === 0 ? '今天' : n.closeDays + ' 天後'}結帳`}${rew ? `・回饋約 ${money(rew)}` : ''}</span>
+      <span class="ct-bar"><i style="width:${prog.toFixed(1)}%"></i></span>
+    </span>
+    <span class="ct-right">
+      <b>${money(n.amount)}</b>
+      <span class="${n.days <= 3 ? 'warn' : ''}">${n.days === 0 ? '今天扣款' : `${md(ymd(n.date))} 扣款`}</span>
+    </span>
+  </button>`;
+}
 VIEWS.cards = () => {
   const orphan = S.transactions.filter(t => !t.card_id && !t.settled_cycle);
-  const banner = orphan.length ? `<div class="banner warn">有 ${orphan.length} 筆捷徑紀錄對不到卡片。點開指定卡片，再到卡片設定補上「Apple 錢包裡的卡片名稱」。</div><section class="panel" style="margin-bottom:14px">${orphan.map(txnRow).join('')}</section>` : '';
-  if (!S.cards.length && (CFG.presetCards || []).length) return `${banner}<div class="cc-track"><button class="cc cc-add" data-act="preset-cards"><span class="plus">✦</span>加入我的 ${CFG.presetCards.length} 張信用卡<small>${CFG.presetCards.map(p => esc(p.name)).join('、')}</small></button></div>`;
-  if (!S.cards.length) return `${banner}<div class="cc-track"><button class="cc cc-add" data-act="add-card"><span class="plus">✦</span>新增信用卡<small>設定結帳日、扣款日與扣款帳戶</small></button></div>`;
-  S.cardSel = Math.max(0, Math.min(S.cardSel || 0, S.cards.length - 1));
-  const faces = S.cards.map(cardFace).join('') + '<button class="cc cc-add" data-act="add-card"><span class="plus">✦</span>新增信用卡</button>';
-  const dots = S.cards.map((c, i) => `<i class="${i === S.cardSel ? 'on' : ''}" style="--cc:${esc(c.color || '#c9a96e')}"></i>`).join('');
-  return `${banner}<div class="cc-track" id="ccTrack">${faces}</div><div class="cc-dots" id="ccDots">${dots}</div><button class="rec-btn" data-act="recommend">這筆刷哪張最划算？</button><div id="ccDetail">${cardDetail(S.cards[S.cardSel])}</div>`;
+  const banner = orphan.length ? `<div class="banner warn">有 ${orphan.length} 筆紀錄對不到卡片。點開指定卡片，再到卡片設定補上「Apple 錢包裡的卡片名稱」。</div><section class="panel" style="margin-bottom:14px">${orphan.map(txnRow).join('')}</section>` : '';
+  if (!S.cards.length) {
+    const preset = (CFG.presetCards || []).length;
+    return `${banner}<button class="cc cc-add" style="width:100%" data-act="${preset ? 'preset-cards' : 'add-card'}"><span class="plus">✦</span>${preset ? `加入我的 ${CFG.presetCards.length} 張信用卡` : '新增信用卡'}<small>${preset ? CFG.presetCards.map(p => esc(p.name)).join('、') : '設定結帳日、扣款日與扣款帳戶'}</small></button>`;
+  }
+  const open = S.cards.find(c => c.id === S.cardOpen);
+  if (open) {
+    const i = S.cards.indexOf(open);
+    return `<div class="cd-nav"><button class="btn small ghost" data-act="cards-home">← 所有卡片</button>
+        <span>${S.cards.length > 1 ? `<button class="icon-btn" data-act="card-step" data-d="-1" aria-label="上一張">‹</button><button class="icon-btn" data-act="card-step" data-d="1" aria-label="下一張">›</button>` : ''}</span></div>
+      <div class="cd-face">${cardFace(open, i)}</div>
+      ${cardDetail(open)}`;
+  }
+  const states = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
+  const due30 = states.filter(x => x.st.next.days <= 31);
+  const next = states[0];
+  return `${banner}
+    <section class="due-sum">
+      <div><small>接下來要繳</small><b>${money(sum(due30, x => x.st.next.amount))}</b></div>
+      <div class="r"><small>最近一筆</small><b>${md(ymd(next.st.next.date))}</b><span>${esc(next.c.name)}</span></div>
+    </section>
+    <div class="ctiles">${states.map(x => cardTile(x.c)).join('')}</div>
+    <div class="actions" style="margin-top:12px"><button class="btn" data-act="recommend">這筆刷哪張最划算？</button><button class="btn ghost" data-act="add-card">＋ 新增信用卡</button></div>`;
 };
-function bindCardTrack() {
-  const tr = $('#ccTrack'); if (!tr || !S.cards.length) return;
-  const card = tr.querySelector('.cc'); const step = card.offsetWidth + 14;
-  tr.scrollLeft = S.cardSel * step;
-  let tm;
-  tr.onscroll = () => {
-    clearTimeout(tm); tm = setTimeout(() => {
-      const i = Math.min(S.cards.length - 1, Math.round(tr.scrollLeft / step));
-      if (i === S.cardSel) return;
-      S.cardSel = i;
-      $('#ccDetail').innerHTML = cardDetail(S.cards[i]);
-      $('#ccDots').querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === i));
-    }, 90);
-  };
-}
 
 /* ---- 投資：台股＋加密 ---- */
 VIEWS.invest = () => {
@@ -1008,7 +1212,8 @@ function openFab() {
   m.innerHTML = `<div class="sheet"><h3>要記什麼？</h3><div class="fab-grid">
     <button data-act="recommend" class="wide"><b>這筆刷哪張？</b><small>依各卡回饋與剩餘上限，算出最划算的卡</small></button>
     <button data-act="add-txn"><b>刷卡消費</b><small>實體卡、網購等捷徑抓不到的</small></button>
-    <button data-act="fab-acc"><b>帳戶存提</b><small>薪水入帳、轉帳、對帳</small></button>
+    <button data-act="fab-acc"><b>帳戶存提</b><small>薪水入帳、支出、對帳</small></button>
+    <button data-act="transfer"><b>帳戶轉帳</b><small>帳戶之間互轉、換匯</small></button>
     <button data-act="add-stock"><b>台股買進</b><small>每次買進記一筆，自動合併均價</small></button>
     <button data-act="add-hold"><b>加密持倉</b><small>交易所的幣種數量</small></button>
     <button data-act="add-recv"><b>應收款</b><small>別人欠你、待入帳的錢</small></button>
@@ -1043,6 +1248,9 @@ VIEWS.settings = () => {
       : `<p class="muted" style="margin-top:0;font-size:13.5px">本機模式可用「打開網址」方式：捷徑打開下面網址，App 會自動帶入金額並跳出確認視窗。</p>
       <code class="codebox">${esc(appUrl)}#add?amount=金額&merchant=商家&card=卡片</code>`}
   </section>
+  <h2>匯入</h2>
+  <section class="panel"><p class="meta" style="margin-top:0">把信用卡帳單截圖給 Claude 整理成 CSV，再從這裡一次匯入。重複的紀錄會自動略過。</p>
+    <button class="btn small primary" data-act="import-txn">匯入刷卡紀錄</button></section>
   <h2>備份</h2>
   <section class="panel">
     <div class="actions" style="margin-top:0"><button class="btn small" data-act="export">匯出 JSON 備份</button>
@@ -1059,7 +1267,6 @@ function render() {
   $('#view').innerHTML = VIEWS[S.tab]();
   document.querySelectorAll('.tabs [data-tab]').forEach(b => { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); });
   const eye = $('[data-act="toggle-hide"]'); eye.innerHTML = S.hide ? EYE_SHUT : EYE_OPEN; eye.setAttribute('aria-pressed', S.hide);
-  if (S.tab === 'cards') bindCardTrack();
 }
 function go(tab) { S.tab = tab; localStorage.setItem('ac_tab', tab); render(); scrollTo(0, 0); }
 
@@ -1150,11 +1357,16 @@ function formCard(c) {
       { k: 'debit_account_id', label: '扣款帳戶', type: 'select', options: accOptions() },
       { k: 'wallet_name', label: 'Apple 錢包裡的卡片名稱', ph: '捷徑比對用，照錢包顯示的名字填', hint: '可只填一部分，例如「MaiCoin」' },
       { k: 'credit_limit', label: '信用額度（選填）', type: 'number' },
+      { k: 'fx_fee', label: '國外交易手續費率（%）', type: 'number', def: 1.5, hint: '多數台灣信用卡是 1.5%；免手續費的卡填 0' },
+      { k: 'cycle_start', label: '改結帳日過渡期：本期從哪天開始（選填）', type: 'date', hint: '有申請改結帳日、這期特別長時才填，例如 9/10' },
+      { k: 'first_close', label: '改結帳日後第一次結帳日（選填）', type: 'date', hint: '例如 10/29；這天之前原本的結帳日會略過' },
       { k: 'color', label: '代表色', type: 'select', options: [['#b8893a', '琥珀金'], ['#4f9a92', '青瓷'], ['#5b72c4', '霧藍'], ['#8a63b8', '薰紫'], ['#c0623f', '赭紅'], ['#5d6378', '石墨']] },
     ],
     onSave: async v => {
       v.closing_day = Math.max(1, Math.min(31, Math.round(v.closing_day)));
       v.due_day = v.due_day == null ? null : Math.max(1, Math.min(31, Math.round(v.due_day)));
+      v.cycle_start = v.cycle_start || null; v.first_close = v.first_close || null;
+      if ((v.cycle_start && !v.first_close) || (!v.cycle_start && v.first_close)) throw new Error('改結帳日的兩個日期要一起填');
       v.debit_account_id = v.debit_account_id || null;
       if (c) {
         if (v.closing_day !== +c.closing_day || v.due_day !== (c.due_day == null ? null : +c.due_day)) v.last_settled = initialSettled(v);
@@ -1167,7 +1379,7 @@ function formCard(c) {
 function formTxn(t, preset = {}) {
   const d = t || preset;
   openForm({
-    title: t ? '編輯消費' : '記一筆刷卡', data: { ...d, pay: d.pay || (t ? txnPay(t) : d.source === 'shortcut' ? 'applepay' : 'card'), txn_at: localDT(d.txn_at || Date.now()), settled: !!d.settled_cycle },
+    title: t ? '編輯消費' : '記一筆刷卡', data: { ...d, overseas: d.fee != null ? num(d.fee) > 0 : (d.currency && d.currency !== 'TWD'), pay: d.pay || (t ? txnPay(t) : d.source === 'shortcut' ? 'applepay' : 'card'), txn_at: localDT(d.txn_at || Date.now()), settled: !!d.settled_cycle },
     fields: [
       { k: 'card_id', label: '信用卡', type: 'select', options: cardOptions() },
       { k: 'merchant', label: '商家／用途' },
@@ -1175,7 +1387,8 @@ function formTxn(t, preset = {}) {
       { k: 'currency', label: '幣別', type: 'select', options: CURRENCIES, def: 'TWD' },
       { k: 'pay', label: '支付方式', type: 'select', options: PAY_OPTIONS, def: 'card', hint: '回饋計算會用到，例如 LINE Pay、日本 Apple Pay 加碼' },
       { k: 'amount_twd', label: '台幣入帳金額（外幣可修正為帳單實際金額）', type: 'number', hint: '台幣交易留空即可；外幣留空會依即時匯率換算' },
-      { k: 'txn_at', label: '時間', type: 'datetime-local', req: 1 },
+      { k: 'overseas', label: '海外交易（加收國外交易手續費）', type: 'check', hint: '外幣交易、或台幣計價但商家在國外（例如 Apple.com、Netflix、Agoda）都要勾' },
+      { k: 'txn_at', label: '時間（建議用入帳日）', type: 'datetime-local', req: 1 },
       ...(t ? [{ k: 'settled', label: '已扣款（不再計入未來帳單）', type: 'check' }] : []),
     ],
     onSave: async v => {
@@ -1183,6 +1396,7 @@ function formTxn(t, preset = {}) {
       row.amount_twd = v.currency === 'TWD' ? v.amount : (v.amount_twd ?? Math.round(toTWD(v.amount, v.currency) * 100) / 100);
       if (!Number.isFinite(row.amount_twd)) throw new Error('抓不到匯率，請手動填台幣金額');
       const card = S.cards.find(c => c.id === row.card_id);
+      row.fee = v.overseas && !isFeeRow(row) ? Math.round(Math.abs(row.amount_twd) * feeRate(card) / 100) * Math.sign(row.amount_twd || 1) : 0;
       if (t) {
         if (v.settled && !t.settled_cycle) row.settled_cycle = 'manual';
         if (!v.settled) row.settled_cycle = null;
@@ -1360,7 +1574,7 @@ async function addPresetCards(force) {
 /* ---------------- events ---------------- */
 document.addEventListener('click', async e => {
   const tabBtn = e.target.closest('.tabs [data-tab]');
-  if (tabBtn) { go(tabBtn.dataset.tab); return; }
+  if (tabBtn) { if (tabBtn.dataset.tab === 'cards' && S.tab === 'cards') S.cardOpen = null; go(tabBtn.dataset.tab); return; }
   const el = e.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
   const id = el.dataset.id, act = el.dataset.act;
   const find = t => S[t].find(x => x.id === id);
@@ -1372,6 +1586,8 @@ document.addEventListener('click', async e => {
       case 'fab': openFab(); break;
       case 'theme': applyTheme(el.dataset.theme); render(); break;
       case 'recommend': openRecommend(); break;
+      case 'paid-bill': formPaidBill(find('cards')); break;
+      case 'import-txn': openImport(); break;
       case 'add-recv': formRecv(); break;
       case 'edit-recv': formRecv(find('receivables')); break;
       case 'got-recv': e.stopPropagation(); formReceive(find('receivables')); break;
@@ -1392,8 +1608,10 @@ document.addEventListener('click', async e => {
         await upd('cards', c.id, { rewards: presetRewardsFor(c) }); render(); toast('已套用建議回饋規則'); break;
       }
       case 'inv': S.invSub = el.dataset.sub; localStorage.setItem('ac_inv', S.invSub); render(); break;
-      case 'open-card': S.cardSel = Math.max(0, S.cards.findIndex(c => c.id === id)); go('cards'); break;
-      case 'cc-select': { const i = +el.dataset.i; const tr = $('#ccTrack'); const w = tr.querySelector('.cc').offsetWidth + 14; tr.scrollTo({ left: i * w, behavior: reduceMotion() ? 'auto' : 'smooth' }); break; }
+      case 'open-card': S.cardOpen = id; go('cards'); break;
+      case 'cards-home': S.cardOpen = null; render(); scrollTo(0, 0); break;
+      case 'card-step': { const i = S.cards.findIndex(c => c.id === S.cardOpen); S.cardOpen = S.cards[(i + (+el.dataset.d) + S.cards.length) % S.cards.length].id; render(); break; }
+      case 'transfer': formTransfer(); break;
       case 'fab-acc': if (!S.accounts.length) formAccount(); else formAdjust(S.accounts.length === 1 ? S.accounts[0] : null); break;
       case 'add-acc': formAccount(); break;
       case 'edit-acc': formAccount(find('accounts')); break;
@@ -1449,6 +1667,7 @@ async function startApp() {
   render();
   await loadToken().catch(() => { });
   await loadFX();
+  await autoFees().catch(e => console.warn('fees', e));
   await runInstallments().catch(e => console.warn('installments', e));
   await runSettlements();
   render();
