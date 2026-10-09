@@ -1,5 +1,5 @@
 // 只快取 App 外殼（網路優先，離線時退回快取）；報價與資料一律走網路。
-const CACHE = 'asset-compass-v15';
+const CACHE = 'asset-compass-v16';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

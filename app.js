@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10a';
+const APP_VERSION = '2026.10.10b';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -410,11 +410,20 @@ function ruleMatches(r, t) {
   return true;
 }
 function monthKey(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
-function tierFor(r, spendPrev) {
-  if (!r.tiers?.length) return { rate: num(r.rate), cap: num(r.cap) };
-  const tier = r.tiers.slice().sort((a, b) => b.min - a.min).find(x => spendPrev >= x.min);
-  return tier ? { rate: num(tier.rate), cap: num(tier.cap) } : { rate: 0, cap: 0 };
+/* 分級加碼：預設依「上個月在這張卡的消費」自動判斷；r.manual = { '2026-10': 2 } 可手動指定某月的等級（0 起算） */
+function tierIndex(r, spendPrev, mk) {
+  if (!r.tiers?.length) return -1;
+  if (r.manual && r.manual[mk] != null && r.manual[mk] !== '') return Math.min(+r.manual[mk], r.tiers.length - 1);
+  let idx = -1;
+  r.tiers.forEach((x, i) => { if (spendPrev >= x.min) idx = i; });
+  return idx;
 }
+function tierFor(r, spendPrev, mk) {
+  if (!r.tiers?.length) return { rate: num(r.rate), cap: num(r.cap), tier: -1 };
+  const i = tierIndex(r, spendPrev, mk);
+  return i >= 0 ? { rate: num(r.tiers[i].rate), cap: num(r.tiers[i].cap), tier: i } : { rate: 0, cap: 0, tier: -1 };
+}
+const prevMonthKey = d => monthKey(new Date(d.getFullYear(), d.getMonth() - 1, 1));
 const ruleDesc = r => {
   const parts = [];
   if (r.tiers?.length) parts.push('依上月消費分級：' + r.tiers.map(x => `${x.min.toLocaleString()} 元起 ${pct(x.rate)}${x.cap ? `／上限 ${x.cap}` : ''}`).join('，'));
@@ -422,6 +431,9 @@ const ruleDesc = r => {
   if ((r.where || 'all') !== 'all') parts.push(WHERE[r.where]?.[0]);
   if ((r.pay || 'any') !== 'any') parts.push(PAYS[r.pay]?.[0]);
   if (r.min) parts.push(`單筆滿 ${r.min}`);
+  if (r.cap_period === 'month') parts.push('上限依日曆月計算');
+  if (r.round_txn) parts.push('逐筆四捨五入');
+  if (r.manual && Object.keys(r.manual).length) parts.push('有手動指定等級');
   if (r.keywords) parts.push(`商家含「${r.keywords}」`);
   return parts.filter(Boolean).join('・');
 };
@@ -433,30 +445,35 @@ function cardRewards(c, extra) {
   if (extra) txns.push(extra);
   txns.sort((a, b) => a.txn_at.localeCompare(b.txn_at));
   const monthSpend = {};
-  for (const t of txns) { const k = monthKey(new Date(t.txn_at)); monthSpend[k] = (monthSpend[k] || 0) + Math.max(0, num(t.amount_twd)); }
-  const per = {}, cycles = {};
+  for (const t of txns) { if (NO_REWARD_RE.test(t.merchant || '') || t.source === 'installment') continue; const k = monthKey(new Date(t.txn_at)); monthSpend[k] = (monthSpend[k] || 0) + Math.max(0, num(t.amount_twd)); }
+  const per = {}, cycles = {}, capUsed = {};
   for (const t of txns) {
     const amt = num(t.amount_twd);
     const d = new Date(t.txn_at);
+    const mk = monthKey(d);
     const cyc = ymd(closeOnOrAfter(c, parseYmd(ymd(d))));
-    const prev = monthSpend[monthKey(new Date(d.getFullYear(), d.getMonth() - 1, 1))] || 0;
+    const prev = monthSpend[prevMonthKey(d)] || 0;
     const C = cycles[cyc] ||= { total: 0, rules: {} };
     const parts = [];
-    const bases = rules.filter(r => r.kind !== 'bonus' && ruleMatches(r, t)).map(r => ({ r, ...tierFor(r, prev) }));
+    const bases = rules.filter(r => r.kind !== 'bonus' && ruleMatches(r, t)).map(r => ({ r, ...tierFor(r, prev, mk) }));
     const base = bases.sort((a, b) => b.rate - a.rate)[0];
     const apply = (x) => {
       const R = C.rules[x.r.id] ||= { earned: 0, cap: x.cap };
       R.cap = x.cap;
+      const ck = x.r.id + '|' + (x.r.cap_period === 'month' ? mk : cyc);
+      const used = capUsed[ck] || 0;
       let v = amt * x.rate / 100;
-      if (v > 0 && x.cap) v = Math.max(0, Math.min(v, x.cap - R.earned));
+      if (x.r.round_txn) v = Math.round(v); // 逐筆四捨五入（例如 MaiCoin U幣）
+      if (v > 0 && x.cap) v = Math.max(0, Math.min(v, x.cap - used));
       if (v <= 0 && amt > 0) return;
+      capUsed[ck] = used + v;
       R.earned += v; C.total += v; parts.push({ id: x.r.id, label: x.r.label, v });
     };
     if (base) apply(base);
-    if (amt > 0) rules.filter(r => r.kind === 'bonus' && ruleMatches(r, t)).forEach(r => { const tr = tierFor(r, prev); if (tr.rate) apply({ r, ...tr }); });
+    if (amt > 0) rules.filter(r => r.kind === 'bonus' && ruleMatches(r, t)).forEach(r => { const tr = tierFor(r, prev, mk); if (tr.rate) apply({ r, ...tr }); });
     per[t.id] = { v: sum(parts, p => p.v), parts };
   }
-  return { per, cycles };
+  return { per, cycles, capUsed, monthSpend };
 }
 function allRewards() {
   const per = {}, byCard = {};
@@ -495,8 +512,8 @@ const REWARD_PRESETS = {
     { label: '日本 Apple／Google Pay 加碼（需登錄）', kind: 'bonus', where: 'japan', pay: 'tap', rate: 1.5, cap: 600, min: 100, unit: '現金回饋' },
   ],
   MaiCoin: [
-    { label: '一般消費', kind: 'base', rate: 0.5, unit: 'U幣' },
-    { label: '等級加碼（依上月消費）', kind: 'bonus', unit: 'U幣', tiers: [{ min: 1, rate: 1, cap: 300 }, { min: 10001, rate: 2, cap: 600 }, { min: 30001, rate: 4, cap: 1200 }] },
+    { label: '一般消費', kind: 'base', rate: 0.5, unit: 'U幣', round_txn: true },
+    { label: '等級加碼（依上月消費）', kind: 'bonus', unit: 'U幣', cap_period: 'month', tiers: [{ min: 1, rate: 1, cap: 300 }, { min: 10001, rate: 2, cap: 600 }, { min: 30001, rate: 4, cap: 1200 }] },
   ],
   星展: [
     { label: '國內一般', kind: 'base', where: 'domestic', rate: 1, unit: '現金積點' },
@@ -527,11 +544,20 @@ function rewardPanel(c, st) {
   const R = cycleReward(c, st.open.end);
   const B = st.billed ? cycleReward(c, st.billed.end) : null;
   const unit = [...new Set(rules.map(r => r.unit).filter(Boolean))].join('／') || '回饋';
+  const CR = S.rew?.byCard[c.id] || { capUsed: {}, monthSpend: {} };
+  const now = new Date(), mk = monthKey(now), pmk = prevMonthKey(now);
   const meters = rules.filter(r => r.on !== false && (r.cap || r.tiers)).map(r => {
-    const x = R.rules[r.id] || { earned: 0, cap: r.tiers ? 0 : num(r.cap) };
-    const cap = x.cap || 0;
-    return `<div class="rmeter"><div class="rm-top"><span>${esc(r.label)}</span><span class="num">${Math.round(x.earned)}${cap ? ` / ${cap}` : ''}</span></div>
-      ${cap ? `<div class="meter"><i style="width:${Math.min(100, x.earned / cap * 100).toFixed(1)}%"></i></div>` : '<div class="meta">上月沒有消費，本月不加碼</div>'}</div>`;
+    let earned, cap, note = '';
+    if (r.tiers?.length) {
+      const tr = tierFor(r, CR.monthSpend[pmk] || 0, mk);
+      cap = tr.cap;
+      const manual = r.manual && r.manual[mk] != null && r.manual[mk] !== '';
+      note = tr.tier >= 0 ? `本月 Lv${tr.tier + 1}（加碼 ${pct(tr.rate)}）${manual ? '・手動指定' : `・依 App 記錄的上月消費 ${money(CR.monthSpend[pmk] || 0)}`}` : '上月沒有消費紀錄，本月不加碼（可點規則手動指定等級）';
+    } else cap = num(r.cap);
+    if (r.cap_period === 'month') earned = CR.capUsed[r.id + '|' + mk] || 0;
+    else earned = (R.rules[r.id] || { earned: 0 }).earned;
+    return `<div class="rmeter"><div class="rm-top"><span>${esc(r.label)}${r.cap_period === 'month' ? `（${now.getMonth() + 1} 月）` : ''}</span><span class="num">${Math.round(earned)}${cap ? ` / ${cap}` : ''}</span></div>
+      ${cap ? `<div class="meter"><i style="width:${Math.min(100, earned / cap * 100).toFixed(1)}%"></i></div>` : ''}${note ? `<div class="meta">${note}</div>` : ''}</div>`;
   }).join('');
   const list = rules.map((r, i) => `<div class="row click rule${r.on === false ? ' off' : ''}" data-act="edit-rule" data-card="${c.id}" data-i="${i}">
       <div class="grow"><div class="title">${esc(r.label)}</div><div class="meta">${esc(ruleDesc(r))}</div></div>
@@ -553,7 +579,8 @@ function formRule(c, i) {
   const r = i != null ? rules[i] : { kind: 'bonus', where: 'all', pay: 'any', unit: rules[0]?.unit || '現金回饋' };
   const tierStr = (r.tiers || []).map(x => `${x.min}:${x.rate}:${x.cap || 0}`).join(', ');
   openForm({
-    title: i != null ? '編輯回饋規則' : '新增回饋規則', data: { ...r, tiers: tierStr, on: r.on !== false },
+    title: i != null ? '編輯回饋規則' : '新增回饋規則', data: { ...r, tiers: tierStr, on: r.on !== false, cap_period: r.cap_period || 'cycle',
+      lv_cur: r.manual?.[monthKey(new Date())] ?? '', lv_prev: r.manual?.[prevMonthKey(new Date())] ?? '' },
     note: '<p class="muted" style="margin-top:-6px;font-size:13px">基本回饋取符合條件中最高的一條；加碼會疊加在基本回饋上，各自依帳單週期封頂。</p>',
     fields: [
       { k: 'label', label: '名稱', req: 1, ph: '例：LINE Pay 加碼' },
@@ -565,12 +592,23 @@ function formRule(c, i) {
       { k: 'min', label: '單筆最低金額（選填）', type: 'number' },
       { k: 'keywords', label: '商家關鍵字（選填，逗號分隔）', ph: '例：全聯, 7-ELEVEN' },
       { k: 'tiers', label: '依上月消費分級（選填）', ph: '1:1:300, 10001:2:600, 30001:4:1200', hint: '格式「上月消費門檻:回饋率:上限」，用逗號隔開' },
+      ...(r.tiers?.length ? [
+        { k: 'lv_cur', label: `${new Date().getMonth() + 1} 月等級`, type: 'select', options: [['', '自動（依上月消費）'], ...r.tiers.map((x, i) => [String(i), `Lv${i + 1}（${pct(x.rate)}，上限 ${x.cap}）`])], hint: 'App 沒有完整的上月紀錄時，照銀行顯示的等級手動指定' },
+        { k: 'lv_prev', label: `${(new Date().getMonth() + 11) % 12 + 1} 月等級`, type: 'select', options: [['', '自動（依上月消費）'], ...r.tiers.map((x, i) => [String(i), `Lv${i + 1}（${pct(x.rate)}，上限 ${x.cap}）`])] },
+      ] : []),
+      { k: 'cap_period', label: '回饋上限怎麼算', type: 'select', options: [['cycle', '每個帳單週期'], ['month', '每個日曆月（1 日到月底）']] },
+      { k: 'round_txn', label: '每筆回饋四捨五入到整數', type: 'check' },
       { k: 'unit', label: '回饋形式', ph: '現金回饋、LINE POINTS、U幣…' },
       { k: 'on', label: '啟用這條規則', type: 'check' },
     ],
     onSave: async v => {
       const tiers = (v.tiers || '').split(/[,，]/).map(s => s.trim()).filter(Boolean).map(s => { const [min, rate, cap] = s.split(':').map(Number); return { min: min || 0, rate: rate || 0, cap: cap || 0 }; }).filter(x => x.rate);
-      const nr = { id: r.id || ruleId(), label: v.label, kind: v.kind, where: v.where, pay: v.pay, rate: v.rate || 0, cap: v.cap || 0, min: v.min || 0, keywords: v.keywords, unit: v.unit, on: v.on, ...(tiers.length ? { tiers } : {}) };
+      const manual = { ...(r.manual || {}) };
+      const setLv = (k, val) => { if (val === '' || val == null) delete manual[k]; else manual[k] = +val; };
+      if ('lv_cur' in v) setLv(monthKey(new Date()), v.lv_cur);
+      if ('lv_prev' in v) setLv(prevMonthKey(new Date()), v.lv_prev);
+      const nr = { id: r.id || ruleId(), label: v.label, kind: v.kind, where: v.where, pay: v.pay, rate: v.rate || 0, cap: v.cap || 0, min: v.min || 0, keywords: v.keywords, unit: v.unit, on: v.on,
+        cap_period: v.cap_period === 'month' ? 'month' : 'cycle', round_txn: !!v.round_txn, ...(tiers.length ? { tiers } : {}), ...(Object.keys(manual).length ? { manual } : {}) };
       if (i != null) rules[i] = nr; else rules.push(nr);
       await upd('cards', c.id, { rewards: rules });
     },
@@ -1569,6 +1607,17 @@ async function addPresetCards(force) {
   }
   // 舊卡片還沒有回饋設定的，補上建議規則
   for (const c of S.cards) if (c.rewards == null) await upd('cards', c.id, { rewards: presetRewardsFor(c) || [] });
+  for (const c of S.cards) { // 舊規則補上新的設定欄位（例如 MaiCoin 的逐筆四捨五入、月上限）
+    const pre = presetRewardsFor(c); if (!pre || !(c.rewards || []).length) continue;
+    let changed = false;
+    const next = c.rewards.map(r => {
+      const p = pre.find(x => x.label === r.label); if (!p) return r;
+      const add = {};
+      for (const k of ['round_txn', 'cap_period']) if (p[k] != null && r[k] == null) { add[k] = p[k]; changed = true; }
+      return { ...r, ...add };
+    });
+    if (changed) await upd('cards', c.id, { rewards: next });
+  }
   try { localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...list.map(p => p.name)])])); } catch (_) { }
   if (added.length) toast(`已新增 ${added.join('、')}，記得到卡片設定選扣款帳戶`, 4500);
 }
