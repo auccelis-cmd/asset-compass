@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10c';
+const APP_VERSION = '2026.10.10d';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -1304,6 +1304,7 @@ const EYE_SHUT = '<svg viewBox="0 0 24 24"><path d="M3 4l18 16M9.9 5.8A10 10 0 0
 function render() {
   if (!VIEWS[S.tab]) S.tab = 'overview';
   allRewards();
+  setTimeout(() => { if (S.tab === 'cards') applyCardFold(); }, 0);
   $('#view').innerHTML = VIEWS[S.tab]();
   document.querySelectorAll('.tabs [data-tab]').forEach(b => { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); });
   const eye = $('[data-act="toggle-hide"]'); eye.innerHTML = S.hide ? EYE_SHUT : EYE_OPEN; eye.setAttribute('aria-pressed', S.hide);
@@ -2137,6 +2138,207 @@ function themeTiles() {
   return `<div class="theme-tiles">${THEMES.map(([k]) => `<button class="tt tt-${k}${k === cur ? ' on' : ''}" data-act="theme" data-theme="${k}" aria-pressed="${k === cur}"><span class="tt-img"></span><span class="tt-name">${names[k]}</span>${k === cur ? '<span class="tt-check">✓</span>' : ''}</button>`).join('')}</div>`;
 }
 
+/* ================================================================
+ * UI v3：羅盤儀表板、投資頁、可收合消費紀錄、四套混合色系
+ * ================================================================ */
+const THEME_INFO = {
+  ivory: ['晨光象牙', 'IVORY', '主背景・舒適閱讀'],
+  green: ['墨綠青金', 'GREEN', '財務穩定・核心數據'],
+  navy: ['夜藍銀月', 'NAVY', '資訊重點・投資數據'],
+  purple: ['暮紫玫金', 'PURPLE', '功能操作・信用卡'],
+};
+THEMES.length = 0;
+THEMES.push(['ivory', '晨光象牙', ['#f8f5ee', '#b98a3e', '#2a2a33']], ['green', '墨綠青金', ['#1f332c', '#d4b06a', '#eef0e8']],
+  ['navy', '夜藍銀月', ['#1d2a3d', '#d8b878', '#edf0f6']], ['purple', '暮紫玫金', ['#2d2236', '#e0b394', '#f2ecf2']]);
+const OLD_THEME = { champagne: 'ivory', mist: 'ivory', oat: 'ivory', forest: 'green' };
+function applyTheme(t) {
+  t = OLD_THEME[t] || t;
+  const th = THEMES.find(x => x[0] === t) || THEMES[0];
+  document.documentElement.dataset.theme = th[0];
+  try { localStorage.setItem('ac_theme', th[0]); } catch (_) { }
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', th[2][0]);
+  document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]')?.setAttribute('content', th[0] === 'ivory' ? 'default' : 'black-translucent');
+}
+function themeTiles() {
+  const cur = document.documentElement.dataset.theme || 'ivory';
+  return `<div class="theme-tiles">${THEMES.map(([k]) => { const [n, en, d] = THEME_INFO[k]; return `<button class="tt tt-${k}${k === cur ? ' on' : ''}" data-act="theme" data-theme="${k}" aria-pressed="${k === cur}">
+      <span class="tt-img"><span class="tt-orb"></span></span><span class="tt-name">${n}<small>${en}</small></span><span class="tt-desc">${d}</span>${k === cur ? '<span class="tt-check">✓</span>' : ''}</button>`; }).join('')}</div>`;
+}
+
+/* ---------- 01 羅盤儀表板 ---------- */
+function compassDial(t) {
+  const P = (r, a) => [r * Math.cos(a * DEG), r * Math.sin(a * DEG)];
+  const f = n => n.toFixed(1);
+  let ticks = '';
+  for (let i = 0; i < 72; i++) {
+    const a = i * 5 - 90, major = i % 9 === 0, mid = i % 3 === 0;
+    const [x0, y0] = P(major ? 128 : mid ? 133 : 136, a), [x1, y1] = P(140, a);
+    ticks += `<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" class="ck${major ? ' M' : ''}"/>`;
+  }
+  // 資產比例環：銀行（左上）→ 投資（右上）→ 其他（右下）；負債另成內環
+  const segs = [[t.bankOnly, 'var(--c-bank)'], [t.invest, 'var(--c-stock)'], [t.other, 'var(--c-recv)']].filter(x => x[0] > 0);
+  const tot = sum(segs, x => x[0]) || 1;
+  let a0 = -90, ring = '';
+  for (const [v, c] of segs) {
+    const sw = v / tot * 360;
+    ring += sw >= 359.5 ? `<circle r="112" class="cr" style="stroke:${c}"/>` : `<path d="${arcPath(112, a0 + 1.2, a0 + sw - 1.2)}" class="cr" style="stroke:${c}"/>`;
+    a0 += sw;
+  }
+  if (!segs.length) ring = '<circle r="112" class="cr empty"/>';
+  const dsw = t.gross > 0 ? Math.min(359, (t.debt + t.liab) / t.gross * 360) : 0;
+  const debt = dsw > .5 ? `<path d="${arcPath(97, -90, -90 + dsw)}" class="cr thin" style="stroke:var(--c-debt)"/>` : '';
+  const star = (len, w, rot, cls) => `<g transform="rotate(${rot})"><path d="M0 ${-len} L${w} 0 L0 0Z" class="${cls} a"/><path d="M0 ${-len} L${-w} 0 L0 0Z" class="${cls} b"/></g>`;
+  let rose = '';
+  for (const r of [45, 135, 225, 315]) rose += star(52, 9, r, 'rs2');
+  for (const r of [0, 90, 180, 270]) rose += star(84, 13, r, 'rs1');
+  const anim = !S.compassSwept && !reduceMotion() ? '<animateTransform attributeName="transform" type="rotate" from="-40" to="0" dur="1.6s" calcMode="spline" keyTimes="0;1" keySplines=".2 .9 .25 1" fill="freeze"/>' : '';
+  S.compassSwept = true;
+  const lbl = [['N', 0, -150], ['E', 150, 0], ['S', 0, 150], ['W', -150, 0]].map(([s, x, y]) => `<text x="${x}" y="${y}" class="cl">${s}</text>`).join('');
+  return `<svg class="compass2" viewBox="-165 -165 330 330" role="img" aria-label="資產羅盤：外環是資產比例，內側紅線是負債">
+    <defs><radialGradient id="cg" cx="50%" cy="45%" r="60%"><stop offset="0" style="stop-color:var(--panel)"/><stop offset="1" style="stop-color:var(--panel-2)"/></radialGradient>
+      <linearGradient id="gA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--fab-hi)"/><stop offset="1" style="stop-color:var(--fab)"/></linearGradient>
+      <linearGradient id="gB" x1="1" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--fab)"/><stop offset="1" style="stop-color:var(--fab-lo)"/></linearGradient></defs>
+    <circle r="146" fill="url(#cg)" class="cbase"/><circle r="140" class="cline"/><circle r="124" class="cline soft"/>
+    ${ticks}${lbl}${ring}${debt}
+    <circle r="86" class="cline soft"/><circle r="64" class="cline faint"/>
+    <g class="rose">${anim}${rose}<circle r="10" class="rc"/><circle r="4" class="rc2"/></g>
+  </svg>`;
+}
+function scenery() {
+  return `<svg class="scenery" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 80 L40 60 L70 72 L110 40 L150 66 L190 50 L230 70 L270 38 L320 64 L360 52 L400 70 L400 120 L0 120Z" class="m1"/>
+    <path d="M0 96 L50 78 L95 92 L140 70 L185 90 L240 74 L290 92 L340 80 L400 94 L400 120 L0 120Z" class="m2"/>
+    <path d="M0 108 Q100 96 200 106 T400 104 L400 120 L0 120Z" class="m3"/>
+    <g class="lh"><path d="M328 70 l4 -22 h4 l4 22z"/><rect x="331" y="44" width="6" height="4"/></g>
+  </svg>`;
+}
+VIEWS.overview = () => {
+  const t = splitTotals();
+  const range = S.range || 30;
+  const since = new Date(); since.setDate(since.getDate() - range);
+  const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.net) }));
+  if (pts.length) pts[pts.length - 1] = { v: t.net }; else pts.push({ v: t.net });
+  const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
+  const pctOf = v => t.gross > 0 ? v / t.gross * 100 : 0;
+  const cardDebt = t.debt + t.liab;
+  const node = (pos, ic, name, v, p, act, extra = '') => `<button class="cnode ${pos}" data-act="${act}" ${extra}><span class="cn-ic">${svgI(ic)}</span><span class="cn-t">${name}</span><span class="cn-p ${p < 0 ? 'neg' : ''}">${p < 0 ? '' : ''}${p.toFixed(1)}%</span></button>`;
+  const states = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
+  const recent = S.transactions.slice().sort((a, b) => b.txn_at.localeCompare(a.txn_at));
+  const rewTotal = sum(S.cards, c => cycleReward(c, cardState(c).open.end).total);
+  const open = !!S.mapOpen;
+  return `
+  <section class="dash">
+    <div class="dash-head">
+      <span class="lbl">總資產淨值</span>
+      <div class="dash-num">${money(t.net)}</div>
+      <div class="hero2-chg ${chg >= 0 ? 'pos' : 'neg'}">${svgI(chg >= 0 ? 'up' : 'arrowDown', 'ti')}${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% <span>${range === 30 ? '本月' : range === 90 ? '近三個月' : '今年'}變動</span>
+        <span class="sel mini"><select data-range>${[[30, '近一個月'], [90, '近三個月'], [365, '近一年']].map(([v, l]) => `<option value="${v}" ${v === range ? 'selected' : ''}>${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></div>
+    </div>
+    <div class="dial-box">
+      ${compassDial(t)}
+      ${node('nw', 'bank', '銀行', t.bankOnly, pctOf(t.bankOnly), 'goto', 'data-tab="bank"')}
+      ${node('ne', 'chart', '投資', t.invest, pctOf(t.invest), 'goto', 'data-tab="invest"')}
+      ${node('sw', 'card', '信用卡', cardDebt, -pctOf(cardDebt), 'goto', 'data-tab="cards"')}
+      ${node('se', 'box', '其他', t.other, pctOf(t.other), 'acc-other')}
+    </div>
+    ${scenery()}
+    <button class="explore" data-act="map-toggle" aria-expanded="${open}">${open ? '收起資產地圖' : '探索你的資產地圖'}</button>
+  </section>
+  ${open ? `<section class="map-detail">
+    <div class="tiles">
+      ${[['bank', '銀行帳戶', t.bankOnly, 'var(--c-bank)', 'bank'], ['chart', '投資資產', t.invest, 'var(--c-stock)', 'invest'], ['card', '信用卡未繳', -cardDebt, 'var(--c-debt)', 'cards'], ['box', '其他資產', t.other, 'var(--c-recv)', 'bank']].map(([ic, n, v, c, tab]) => `<button class="tile" data-act="goto" data-tab="${tab}" style="--tc:${c}"><div class="tile-h">${svgI(ic)}<span>${n}</span></div><b class="${v < 0 ? 'neg' : ''}">${money(v)}</b><span class="tp">${Math.abs(pctOf(Math.abs(v))).toFixed(1)}%</span></button>`).join('')}
+    </div>
+    <div class="panel trend-card"><div class="tp-head"><h4>淨值走勢</h4></div><div class="area-box sm">${areaChart(pts)}</div></div>
+  </section>` : ''}
+  ${rewTotal > 0 ? `<button class="rew-strip" data-act="recommend"><span>本期預估回饋</span><b>${money(rewTotal)}</b><small>刷哪張最划算 ›</small></button>` : ''}
+  ${collapsible('ov-due', '接下來的扣款', `${states.length} 張卡・合計 ${money(sum(states, x => x.st.next.amount))}`, states.map(({ c, st }) => `<div class="row click" data-act="open-card" data-id="${c.id}">
+      <div class="date-glyph" style="--cc:${esc(c.color || '#b8893a')}"><b>${st.next.date.getDate()}</b><small>${st.next.date.getMonth() + 1} 月</small></div>
+      <div class="grow"><div class="title">${esc(c.name)}</div><div class="meta one">${st.next.days === 0 ? '<span class="warn">今天扣款</span>' : `${st.next.days} 天後扣款`}・${st.next.final ? '帳單已出' : '累計中'}</div></div>
+      <div class="right amt-sm">${money(st.next.amount)}</div></div>`), true, 5)}
+  ${collapsible('ov-recent', '最近刷卡', recent.length ? `${recent.length} 筆` : '', recent.slice(0, 30).map(x => txnRow(x)), false, 3)}`;
+};
+/* 可收合清單：預設顯示前 n 筆，點標題展開／收起 */
+function collapsible(key, title, sub, rows, defOpen = false, preview = 3) {
+  S.fold ||= {};
+  const open = S.fold[key] ?? defOpen;
+  const shown = open ? rows : rows.slice(0, preview);
+  return `<section class="fold${open ? ' open' : ''}">
+    <button class="fold-h" data-act="fold" data-k="${key}" aria-expanded="${open}"><span class="fold-t">${esc(title)}</span><span class="fold-s">${sub}</span>${svgI('down', 'fold-ic')}</button>
+    <div class="fold-b">${shown.join('') || '<div class="empty">還沒有紀錄</div>'}
+      ${!open && rows.length > preview ? `<button class="fold-more" data-act="fold" data-k="${key}">顯示全部 ${rows.length} 筆</button>` : ''}</div></section>`;
+}
+
+/* ---------- 04 投資 ---------- */
+VIEWS.invest = () => {
+  const sr = stockRows(), cr = cryptoRows();
+  const stockV = sum(sr, r => r.value || 0), stockCost = sum(sr, r => r.costTotal || 0);
+  const cryptoV = sum(cr, r => r.value || 0);
+  const cryptoChg = cryptoV ? sum(cr, r => (r.value || 0) * (r.chg || 0)) / cryptoV : 0;
+  const total = stockV + cryptoV;
+  const range = S.invRange || 365;
+  const since = new Date(); if (range < 9999) since.setDate(since.getDate() - range); else since.setFullYear(2000);
+  const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.stock) + num(s.crypto) }));
+  if (pts.length) pts[pts.length - 1] = { v: total }; else pts.push({ v: total });
+  const chg = pts[0].v ? (total - pts[0].v) / pts[0].v * 100 : 0;
+  const stockPct = stockCost ? (stockV - stockCost) / stockCost * 100 : 0;
+  const sub = S.invSub === 'crypto' ? 'crypto' : 'stocks';
+  const group = (k, ic, name, v, p, pl) => `<button class="inv-row${sub === k ? ' on' : ''}" data-act="inv" data-sub="${k}">
+      <span class="inv-ic ${k}">${ic}</span><span class="grow"><b>${name}</b><span>${money(v)}</span></span>
+      <span class="inv-p ${p >= 0 ? 'pos' : 'neg'}">${p >= 0 ? '+' : ''}${p.toFixed(1)}%<small>${pl}</small></span>${svgI('chev', 'chev')}</button>`;
+  const parts = [{ n: '台股', v: stockV, c: 'var(--c-stock)' }, { n: '加密貨幣', v: cryptoV, c: 'var(--c-crypto)' }];
+  return `<section class="hero2 inv-hero">
+      <span class="lbl">投資資產總額</span>
+      <div class="hero2-num">${money(total)}</div>
+      <div class="hero2-chg ${chg >= 0 ? 'pos' : 'neg'}">${svgI(chg >= 0 ? 'up' : 'arrowDown', 'ti')}${chg >= 0 ? '+' : ''}${chg.toFixed(1)}% <span>${{ 30: '近一個月', 90: '近三個月', 180: '近半年', 365: '本年', 99999: '全部期間' }[range]}報酬</span></div>
+      <div class="area-box">${areaChart(pts)}</div>
+      <div class="rchips">${[[30, '1M'], [90, '3M'], [180, '6M'], [365, '1Y'], [99999, 'ALL']].map(([v, l]) => `<button class="${v === range ? 'on' : ''}" data-act="inv-range" data-v="${v}">${l}</button>`).join('')}</div>
+    </section>
+    <div class="inv-rows">
+      ${group('stocks', svgI('chart'), '台股', stockV, stockPct, '未實現')}
+      ${group('crypto', '₿', '加密貨幣', cryptoV, cryptoChg, '24h')}
+    </div>
+    ${total > 0 ? `<section class="panel dist"><h4>資產配置</h4><div class="dist-body">${donut(parts, shortMoney(total), '投資資產')}<div class="dist-leg">${parts.map(p => `<div><i style="background:${p.c}"></i><span>${p.n}</span><b>${(p.v / total * 100).toFixed(1)}%</b></div>`).join('')}</div></div></section>` : ''}
+    <div class="actions"><button class="btn outline" data-act="add-invest">＋ 新增投資項目</button></div>
+    <div class="inv-detail">${VIEWS[sub]()}</div>`;
+};
+function openAddInvest() {
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><span class="grab"></span><div class="sheet-head"><h3>新增投資項目</h3><button type="button" class="x" data-close>×</button></div>
+    <div class="menu"><button data-act="add-stock">台股買進</button><button data-act="add-hold">加密貨幣（交易所持倉）</button><button data-act="add-wallet">鏈上錢包地址</button></div></div>`;
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) { m.hidden = true; m.innerHTML = ''; } };
+}
+
+/* ---------- 信用卡詳細：消費紀錄可收合 ---------- */
+const _cardDetailView = cardDetailView;
+cardDetailView = function (c) {
+  const html = _cardDetailView(c);
+  S.fold ||= {};
+  const key = 'card-' + c.id, open = S.fold[key] ?? false;
+  return html.replace('<section class="panel txn-panel">', `<section class="panel txn-panel fold-panel${open ? ' open' : ''}" data-fold="${key}">`)
+    .replace(/<div class="tp-head"><h4>([^<]+)<\/h4>/, (m, h) => `<div class="tp-head"><button class="fold-h inline" data-act="fold" data-k="${key}" aria-expanded="${open}"><span class="fold-t">${h}</span><span class="fold-s" data-count></span>${svgI('down', 'fold-ic')}</button>`);
+};
+function applyCardFold() {
+  document.querySelectorAll('.fold-panel').forEach(p => {
+    const open = p.classList.contains('open');
+    const rows = [...p.querySelectorAll('.txn-list .txn')];
+    const vis = rows.filter(r => !r.dataset.filtered);
+    const tot = sum(vis, r => num((r.querySelector('.amt-sm')?.textContent || '').replace(/[^\d.-]/g, '')));
+    const cnt = p.querySelector('[data-count]'); if (cnt) cnt.textContent = `${vis.length} 筆・${S.hide ? '••••' : money(tot)}`;
+    vis.forEach((r, i) => r.hidden = !open && i >= 3);
+    let more = p.querySelector('.fold-more');
+    if (!open && vis.length > 3) { if (!more) { more = document.createElement('button'); more.className = 'fold-more'; more.dataset.act = 'fold'; more.dataset.k = p.dataset.fold; p.querySelector('.txn-list').after(more); } more.textContent = `顯示全部 ${vis.length} 筆`; }
+    else more?.remove();
+    p.querySelectorAll('.tp-head .sel, .tp-head .icon-btn').forEach(x => x.hidden = !open);
+  });
+}
+const _filterTxnList = filterTxnList;
+filterTxnList = function () {
+  const q = ($('.txn-q')?.value || '').trim().toLowerCase(), cat = $('[data-catfilter]')?.value || '';
+  document.querySelectorAll('.txn-list .txn').forEach(r => { const hide = (q && !r.dataset.text.includes(q)) || (cat && r.dataset.cat !== cat); if (hide) r.dataset.filtered = '1'; else delete r.dataset.filtered; r.hidden = !!hide; });
+  applyCardFold();
+};
+
 /* ---------------- events ---------------- */
 document.addEventListener('click', async e => {
   const tabBtn = e.target.closest('.tabs [data-tab]');
@@ -2179,6 +2381,11 @@ document.addEventListener('click', async e => {
       case 'card-step': { const i = S.cards.findIndex(c => c.id === S.cardOpen); S.cardOpen = S.cards[(i + (+el.dataset.d) + S.cards.length) % S.cards.length].id; render(); break; }
       case 'transfer': formTransfer(); break;
       case 'money-in-out': formMoney('in-out'); break;
+      case 'fold': { const k = el.dataset.k; S.fold ||= {}; S.fold[k] = !(S.fold[k] ?? ({ 'ov-due': true })[k] ?? false); render(); break; }
+      case 'map-toggle': S.mapOpen = !S.mapOpen; render(); break;
+      case 'acc-other': S.accTab = 'other'; go('bank'); break;
+      case 'inv-range': S.invRange = +el.dataset.v; render(); break;
+      case 'add-invest': openAddInvest(); break;
       case 'money-set': formMoney('set'); break;
       case 'acc-tab': S.accTab = el.dataset.t; render(); break;
       case 'card-filter': S.cardFilter = el.dataset.f; render(); break;
@@ -2256,7 +2463,7 @@ async function startApp() {
 }
 
 async function boot() {
-  applyTheme(localStorage.getItem('ac_theme') || 'champagne');
+  applyTheme(localStorage.getItem('ac_theme') || 'ivory');
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
   if (!CLOUD) return startApp();
   sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } });
