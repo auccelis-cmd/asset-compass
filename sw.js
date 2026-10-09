@@ -1,6 +1,6 @@
 // 只快取 App 外殼（網路優先，離線時退回快取）；報價與資料一律走網路。
-const CACHE = 'asset-compass-v23';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'lib-hall-top.webp', 'lib-hall-blur.webp'];
+const CACHE = 'asset-compass-v25';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'lib-hall-top.webp', 'lib-hall-blur.webp', 'ver-bg.webp'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

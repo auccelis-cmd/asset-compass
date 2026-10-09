@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10i';
+const APP_VERSION = '2026.10.10k';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -2524,3 +2524,52 @@ render = function () {
   const v = $('#view');
   if (v && !v.querySelector(':scope > .lib-head')) v.insertAdjacentHTML('afterbegin', libHead(S.tab));
 };
+
+/* ================================================================
+ * 夜苑鎏金 VERDANT：上方分頁、日期、資產走勢、放射式記帳選單
+ * ================================================================ */
+THEME_INFO.verdant = ['夜苑鎏金', 'VERDANT', '墨綠玻璃・鎏金描邊'];
+THEMES.unshift(['verdant', '夜苑鎏金', ['#0b1512', '#cfae6e', '#f1ece0']]);
+try { if (!localStorage.getItem('ac_ver_v1')) { localStorage.setItem('ac_ver_v1', '1'); localStorage.setItem('ac_lib_v1', '1'); applyTheme('verdant'); } } catch (_) { }
+const isVer = () => document.documentElement.dataset.theme === 'verdant';
+function verChrome() {
+  const top = $('header.top');
+  if (top && !$('.toptabs')) {
+    top.insertAdjacentHTML('afterend', `<div class="hdate"></div><nav class="toptabs" aria-label="分頁">${[['overview', '總覽'], ['bank', '帳戶'], ['cards', '信用卡'], ['invest', '投資']].map(([k, l]) => `<button data-act="goto" data-tab="${k}">${l}</button>`).join('')}</nav>`);
+  }
+  const d = new Date(), wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+  const hd = $('.hdate'); if (hd) hd.textContent = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}  ${wd}`;
+  document.querySelectorAll('.toptabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+}
+function verTrend() {
+  const t = splitTotals(), range = S.range || 30;
+  const since = new Date(); since.setDate(since.getDate() - range);
+  const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.net) }));
+  if (pts.length) pts[pts.length - 1] = { v: t.net }; else pts.push({ v: t.net });
+  const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
+  return `<section class="panel ver-trend"><div class="tp-head"><h4>資產走勢</h4><span class="meta ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span></div><div class="area-box sm">${areaChart(pts)}</div></section>`;
+}
+const _ovView = VIEWS.overview;
+VIEWS.overview = () => {
+  const h = _ovView();
+  if (!isVer() || S.mapOpen) return h;
+  const k = h.indexOf('</section>');
+  return k < 0 ? h : h.slice(0, k + 10) + verTrend() + h.slice(k + 10);
+};
+const _renderL = render;
+render = function () { _renderL(); verChrome(); };
+
+/* 放射式記帳選單（夜苑主題） */
+const _openFabSheet = openFab;
+function closeRadial() { const r = $('.fab-radial'); if (r) r.remove(); document.body.classList.remove('fab-open'); }
+openFab = function () {
+  if (!isVer()) return _openFabSheet();
+  if ($('.fab-radial')) return closeRadial();
+  const items = [['fab-acc', 'bank', '帳戶', -118, -46], ['add-txn', 'card', '記帳', -62, -128], ['transfer', 'swap', '轉帳', 62, -128], ['add-invest', 'chart', '投資', 118, -46]];
+  document.body.insertAdjacentHTML('beforeend', `<div class="fab-radial">${items.map(([a, ic, l, x, y]) => `<button class="fr-btn" data-act="${a}" style="--x:${x}px;--y:${y}px">${svgI(ic)}<span>${l}</span></button>`).join('')}<button class="fr-more" data-act="fab-sheet">更多記帳方式</button></div>`);
+  document.body.classList.add('fab-open');
+  const r = $('.fab-radial');
+  requestAnimationFrame(() => r.classList.add('show'));
+  r.addEventListener('click', e => { if (!e.target.closest('[data-act]') || e.target.closest('[data-act]')) setTimeout(closeRadial, 0); });
+};
+document.addEventListener('click', e => { if (e.target.closest('[data-act="fab-sheet"]')) { closeRadial(); _openFabSheet(); } });
