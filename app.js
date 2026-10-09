@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10n';
+const APP_VERSION = '2026.10.10p';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -2531,8 +2531,8 @@ render = function () {
 THEME_INFO.verdant = ['星象午夜', 'ASTRAL', '午夜墨黑・松綠・香檳金'];
 THEMES.unshift(['verdant', '星象午夜', ['#111B20', '#C5A572', '#F1E9DB']]);
 try { if (!localStorage.getItem('ac_ver_v1')) { localStorage.setItem('ac_ver_v1', '1'); localStorage.setItem('ac_lib_v1', '1'); applyTheme('verdant'); } } catch (_) { }
-const isVer = () => ['ivory', 'green', 'navy', 'purple', 'starmap'].includes(document.documentElement.dataset.theme);
-const isStar = () => ['ivory', 'green', 'navy', 'purple', 'starmap'].includes(document.documentElement.dataset.theme);
+const isVer = () => true;   // 所有主題都用星象版面
+const isStar = () => true;
 function verChrome() {
   const top = $('header.top');
   if (top && !$('.toptabs')) {
@@ -2606,20 +2606,20 @@ compassDial = function (t) {
   for (let i = 0; i < 26; i++) { const a = rnd() * 360, r = 30 + rnd() * 75, [x, y] = P(r, a); stars += `<circle cx="${f(x)}" cy="${f(y)}" r="${(rnd() * 1.1 + .4).toFixed(2)}"/>`; }
   return `<svg class="vdial" viewBox="-170 -170 340 340" role="img" aria-label="資產羅盤：外環是資產比例，內側紅線是負債">
     <defs>
-      ${isStar() ? `<linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe8b0"/><stop offset=".28" stop-color="#b98c45"/><stop offset=".5" stop-color="#f3d58f"/><stop offset=".75" stop-color="#8a6630"/><stop offset="1" stop-color="#e9c77f"/></linearGradient>
-      <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff0c4"/><stop offset="1" stop-color="#c9a056"/></linearGradient>
-      <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#8f6a30"/><stop offset="1" stop-color="#5a4019"/></linearGradient>
-      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" stop-color="#1c3a3a"/><stop offset=".7" stop-color="#112326"/><stop offset="1" stop-color="#0b1618"/></radialGradient>
-      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" stop-color="#1b3436"/><stop offset="1" stop-color="#0c1719"/></radialGradient>
-      <linearGradient id="vneedle" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff2c8"/><stop offset=".5" stop-color="#e2c27c"/><stop offset=".5" stop-color="#9c7638"/><stop offset="1" stop-color="#6e5226"/></linearGradient>`
-      : `<linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#D9BE8C"/><stop offset=".5" stop-color="#C5A572"/><stop offset="1" stop-color="#A88A5A"/></linearGradient>
-      <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#E3CFA6"/><stop offset="1" stop-color="#C5A572"/></linearGradient>
-      <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#8E7650"/><stop offset="1" stop-color="#5E4E35"/></linearGradient>
-      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" stop-color="#1D3436"/><stop offset="1" stop-color="#14232A"/></radialGradient>
-      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" stop-color="#1A2D31"/><stop offset="1" stop-color="#111B20"/></radialGradient>`}
+      ${isStar() ? `<linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:rgb(var(--sk-hi))"/><stop offset=".28" style="stop-color:rgb(var(--sk-acc))"/><stop offset=".5" style="stop-color:rgb(var(--sk-hi))"/><stop offset=".75" style="stop-color:rgb(var(--sk-lo))"/><stop offset="1" style="stop-color:rgb(var(--sk-hi))"/></linearGradient>
+      <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-hi))"/><stop offset="1" style="stop-color:rgb(var(--sk-acc))"/></linearGradient>
+      <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-lo))"/><stop offset="1" style="stop-color:rgb(var(--sk-d2))"/></linearGradient>
+      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" style="stop-color:rgb(var(--sk-d2))"/><stop offset=".7" style="stop-color:rgb(var(--sk-d1))"/><stop offset="1" style="stop-color:rgb(var(--sk-d0))"/></radialGradient>
+      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" style="stop-color:rgb(var(--sk-d1))"/><stop offset="1" style="stop-color:rgb(var(--sk-d0))"/></radialGradient>
+      <linearGradient id="vneedle" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-hi))"/><stop offset=".5" style="stop-color:rgb(var(--sk-hi))"/><stop offset=".5" style="stop-color:rgb(var(--sk-lo))"/><stop offset="1" style="stop-color:rgb(var(--sk-tx))"/></linearGradient>`
+      : `<linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:rgb(var(--sk-acc))"/><stop offset=".5" style="stop-color:rgb(var(--sk-acc))"/><stop offset="1" style="stop-color:rgb(var(--sk-acc))"/></linearGradient>
+      <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-hi))"/><stop offset="1" style="stop-color:rgb(var(--sk-acc))"/></linearGradient>
+      <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-lo))"/><stop offset="1" style="stop-color:rgb(var(--sk-d2))"/></linearGradient>
+      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" style="stop-color:rgb(var(--sk-d2))"/><stop offset="1" style="stop-color:rgb(var(--sk-d1))"/></radialGradient>
+      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" style="stop-color:rgb(var(--sk-d1))"/><stop offset="1" style="stop-color:rgb(var(--sk-d1))"/></radialGradient>`}
       <filter id="vglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
-    <circle r="166" fill="none" stroke="rgba(230,196,128,.18)" stroke-width="8" filter="url(#vglow)"/>
+    <circle r="166" fill="none" style="stroke:rgba(var(--sk-hi),.18)" stroke-width="8" filter="url(#vglow)"/>
     <circle r="160" fill="url(#vface)" stroke="url(#vgold)" stroke-width="2"/>
     <circle r="154" fill="none" stroke="url(#vgold)" stroke-width=".9" opacity=".8"/>
     ${ticks}
@@ -2630,11 +2630,11 @@ compassDial = function (t) {
     <g class="vstars">${stars}</g>
     <g class="vrose" opacity=".5">${rose}</g>
     <circle r="88" fill="url(#vcore)" stroke="url(#vgold)" stroke-width="1.6"/>
-    <circle r="82" fill="none" stroke="rgba(230,196,128,.45)" stroke-width=".7"/>
-    <circle r="82" fill="none" stroke="rgba(230,196,128,.55)" stroke-width="3" stroke-dasharray=".8 6.2"/>
+    <circle r="82" fill="none" style="stroke:rgba(var(--sk-hi),.45)" stroke-width=".7"/>
+    <circle r="82" fill="none" style="stroke:rgba(var(--sk-hi),.55)" stroke-width="3" stroke-dasharray=".8 6.2"/>
     ${isStar() ? `<g class="vneedle"><path d="M0 -206 L7 -150 L0 -92 L-7 -150Z" fill="url(#vneedle)"/><path d="M0 206 L7 150 L0 92 L-7 150Z" fill="url(#vneedle)"/>
-      <path d="M0 -226 L3 -212 L14 -208 L3 -204 L0 -190 L-3 -204 L-14 -208 L-3 -212Z" fill="#f3d58f"/>
-      <circle cy="-150" r="3" fill="#1b3436" stroke="#e2c27c"/><circle cy="150" r="3" fill="#1b3436" stroke="#e2c27c"/></g>` : ''}
+      <path d="M0 -226 L3 -212 L14 -208 L3 -204 L0 -190 L-3 -204 L-14 -208 L-3 -212Z" style="fill:rgb(var(--sk-hi))"/>
+      <circle cy="-150" r="3" style="fill:rgb(var(--sk-d1));stroke:rgb(var(--sk-hi))"/><circle cy="150" r="3" style="fill:rgb(var(--sk-d1));stroke:rgb(var(--sk-hi))"/></g>` : ''}
   </svg>`;
 };
 const _ovView2 = VIEWS.overview;
@@ -2652,4 +2652,6 @@ VIEWS.overview = () => {
 /* ---------- 星圖秘境（照設計稿） ---------- */
 THEME_INFO.starmap = ['星圖秘境', 'STARMAP', '星空羅盤・鎏金描邊'];
 THEMES.unshift(['starmap', '星圖秘境', ['#0d181a', '#d9b878', '#f1ece0']]);
-// Respect the user's chosen theme; never force a visual theme on startup.
+try { if (!localStorage.getItem('ac_star_v1')) { localStorage.setItem('ac_star_v1', '1'); applyTheme('starmap'); } } catch (_) { }
+
+try { document.documentElement.classList.add('sky'); } catch (_) { }

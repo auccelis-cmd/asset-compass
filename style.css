@@ -1406,136 +1406,136 @@ html[data-theme="verdant"] .fab-radial .fr-more { background: #182A2C; border-co
 /* ================================================================
  * 夜苑鎏金 VERDANT：墨綠黑底＋葉影、玻璃面板、金色描邊
  * ================================================================ */
-[data-theme="starmap"] {
-  --night: #0b1512; --night-2: #101d19; --panel: rgba(22,34,30,.78); --panel-2: rgba(30,46,40,.85); --line: rgba(201,168,106,.28); --line-soft: rgba(201,168,106,.14);
-  --gold: #cfae6e; --gold-soft: #8c7449; --accent-text: #e6c98f; --on-accent: #1a160d; --needle: #d9b878;
-  --text: #f1ece0; --muted: #b9b5a6; --faint: #868a7e; --danger: #e48a7e; --ok: #8fd0a4;
+html.sky[data-theme] {
+  --night: rgb(var(--sk-d0)); --night-2: rgb(var(--sk-d1)); --panel: rgba(var(--sk-d1),.78); --panel-2: rgba(var(--sk-d1),.85); --line: rgba(var(--sk-acc),.28); --line-soft: rgba(var(--sk-acc),.14);
+  --gold: rgb(var(--sk-acc)); --gold-soft: rgb(var(--sk-lo)); --accent-text: rgb(var(--sk-hi)); --on-accent: rgb(var(--sk-d1)); --needle: rgb(var(--sk-acc));
+  --text: rgb(var(--sk-tx)); --muted: rgb(var(--sk-mu)); --faint: rgb(var(--sk-mu)); --danger: rgb(var(--sk-acc)); --ok: rgb(var(--sk-mu));
   --c-bank: #4f9c7a; --c-stock: #c9634e; --c-crypto: #d8a845; --c-recv: #7d8b99; --c-debt: #c0584a; --c-liab: #a8504a;
-  --card-1: #22322c; --card-2: #0f1a17; --card-text: #f4ecd9; --card-sub: #c4b998; --chip-1: #e3c88a; --chip-2: #9a7c45;
-  --glow: #183029; --star: #cfae6e; --shadow: 0,0,0; --mtn1: #35584a; --mtn2: #2a4a3e; --mtn3: #1d3530;
-  --glass: linear-gradient(160deg, rgba(34,50,44,.74), rgba(14,23,20,.86));
-  --gline: rgba(207,174,110,.26);
+  --card-1: rgb(var(--sk-d1)); --card-2: rgb(var(--sk-d1)); --card-text: rgb(var(--sk-tx)); --card-sub: rgb(var(--sk-acc)); --chip-1: rgb(var(--sk-hi)); --chip-2: rgb(var(--sk-lo));
+  --glow: rgb(var(--sk-d1)); --star: rgb(var(--sk-acc)); --shadow: 0,0,0; --mtn1: rgb(var(--sk-d2)); --mtn2: rgb(var(--sk-d2)); --mtn3: rgb(var(--sk-d2));
+  --glass: linear-gradient(160deg, rgba(var(--sk-d1),.74), rgba(var(--sk-d0),.86));
+  --gline: rgba(var(--sk-acc),.26);
   color-scheme: dark;
 }
-html[data-theme="starmap"] body { background: #0b1512 !important; }
-html[data-theme="starmap"] body::before {
+html.sky[data-theme] body { background: rgb(var(--sk-d0)) !important; }
+html.sky[data-theme] body::before {
   display: block; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 1; mix-blend-mode: normal;
-  background: radial-gradient(70% 45% at 50% 30%, rgba(40,70,58,.25), transparent 70%), linear-gradient(rgba(8,14,12,.35), rgba(8,14,12,.35)), url("ver-bg.webp") center / cover no-repeat, #0b1512 !important;
+  background: radial-gradient(70% 45% at 50% 30%, rgba(var(--sk-d2),.25), transparent 70%), linear-gradient(rgba(var(--sk-d0),.35), rgba(var(--sk-d0),.35)), url("ver-bg.webp") center / cover no-repeat, rgb(var(--sk-d0)) !important;
 }
-[data-theme="starmap"] #app::before { display: none; }
+html.sky[data-theme] #app::before { display: none; }
 
 /* 頁首：品牌＋日期＋上方分頁 */
-[data-theme="starmap"] .top { background: linear-gradient(rgba(10,18,15,.92), rgba(10,18,15,.7)); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 0; }
-[data-theme="starmap"] .brand { color: #f1e6cc; }
-[data-theme="starmap"] .brand .bt small { color: #b9a477; letter-spacing: .26em; }
-[data-theme="starmap"] .brand .mark { stroke: var(--gold); }
+html.sky[data-theme] .top { background: linear-gradient(rgba(var(--sk-d0),.92), rgba(var(--sk-d0),.7)); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 0; }
+html.sky[data-theme] .brand { color: rgb(var(--sk-tx)); }
+html.sky[data-theme] .brand .bt small { color: rgb(var(--sk-acc)); letter-spacing: .26em; }
+html.sky[data-theme] .brand .mark { stroke: var(--gold); }
 .hdate { display: none; }
-[data-theme="starmap"] .hdate { display: block; font-family: var(--num); font-size: 12.5px; color: #cfc6ad; letter-spacing: .06em; margin: -4px 0 0 2px; padding: 0 16px; }
+html.sky[data-theme] .hdate { display: block; font-family: var(--num); font-size: 12.5px; color: rgb(var(--sk-tx)); letter-spacing: .06em; margin: -4px 0 0 2px; padding: 0 16px; }
 .toptabs { display: none; }
-[data-theme="starmap"] .toptabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 10px 12px 2px; padding: 4px; border-bottom: 1px solid var(--gline); }
-.toptabs button { border: 1px solid transparent; background: none; color: #bdb7a5; font-family: var(--serif-tc); font-weight: 600; font-size: 15px; letter-spacing: .12em; padding: 7px 0; border-radius: 99px; cursor: pointer; }
-.toptabs button.on { color: #f1dcab; border-color: rgba(207,174,110,.6); background: linear-gradient(180deg, rgba(60,70,50,.55), rgba(30,40,32,.65)); box-shadow: inset 0 1px 0 rgba(255,240,200,.12), 0 0 14px rgba(207,174,110,.15); }
-[data-theme="starmap"] .lib-head, [data-theme="starmap"] .lib-card { display: none !important; }
+html.sky[data-theme] .toptabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 10px 12px 2px; padding: 4px; border-bottom: 1px solid var(--gline); }
+.toptabs button { border: 1px solid transparent; background: none; color: rgb(var(--sk-mu)); font-family: var(--serif-tc); font-weight: 600; font-size: 15px; letter-spacing: .12em; padding: 7px 0; border-radius: 99px; cursor: pointer; }
+.toptabs button.on { color: rgb(var(--sk-hi)); border-color: rgba(var(--sk-acc),.6); background: linear-gradient(180deg, rgba(var(--sk-d2),.55), rgba(var(--sk-d1),.65)); box-shadow: inset 0 1px 0 rgba(var(--sk-hi),.12), 0 0 14px rgba(var(--sk-acc),.15); }
+html.sky[data-theme] .lib-head, html.sky[data-theme] .lib-card { display: none !important; }
 
 /* 玻璃面板 */
-[data-theme="starmap"] :is(.panel, .fold, .sum-card, .hero2, .dash, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip) {
+html.sky[data-theme] :is(.panel, .fold, .sum-card, .hero2, .dash, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip) {
   background: var(--glass) !important; border: 1px solid var(--gline) !important; border-radius: 16px !important;
-  box-shadow: inset 0 1px 0 rgba(255,245,220,.06), 0 10px 26px rgba(0,0,0,.35) !important;
+  box-shadow: inset 0 1px 0 rgba(var(--sk-tx),.06), 0 10px 26px rgba(0,0,0,.35) !important;
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
-[data-theme="starmap"] .crows, [data-theme="starmap"] .inv-rows { display: grid; gap: 10px; background: none; border: 0; padding: 0; }
-[data-theme="starmap"] .crow { border-left: 1px solid var(--gline) !important; padding: 14px 14px 14px 12px; }
-[data-theme="starmap"] .crow.sel, [data-theme="starmap"] .crow:first-child { }
-[data-theme="starmap"] :is(.crow, .inv-row, .tile):hover, [data-theme="starmap"] .inv-row.on {
-  border-color: rgba(222,190,125,.75) !important; box-shadow: 0 0 0 1px rgba(222,190,125,.25), 0 0 22px rgba(207,174,110,.18), 0 10px 26px rgba(0,0,0,.35) !important;
+html.sky[data-theme] .crows, html.sky[data-theme] .inv-rows { display: grid; gap: 10px; background: none; border: 0; padding: 0; }
+html.sky[data-theme] .crow { border-left: 1px solid var(--gline) !important; padding: 14px 14px 14px 12px; }
+html.sky[data-theme] .crow.sel, html.sky[data-theme] .crow:first-child { }
+html.sky[data-theme] :is(.crow, .inv-row, .tile):hover, html.sky[data-theme] .inv-row.on {
+  border-color: rgba(var(--sk-acc),.75) !important; box-shadow: 0 0 0 1px rgba(var(--sk-acc),.25), 0 0 22px rgba(var(--sk-acc),.18), 0 10px 26px rgba(0,0,0,.35) !important;
 }
-[data-theme="starmap"] .crow-ic { width: 38px; height: 38px; border-radius: 10px; color: var(--cc); background: color-mix(in srgb, var(--cc) 14%, rgba(10,18,15,.8)); border: 1px solid color-mix(in srgb, var(--cc) 35%, transparent); }
-[data-theme="starmap"] .info-grid { gap: 10px !important; border: 0; background: none; }
-[data-theme="starmap"] .info-grid div { background: var(--glass) !important; border: 1px solid var(--gline) !important; border-radius: 12px !important; }
-[data-theme="starmap"] .row { border-color: rgba(207,174,110,.12); }
-[data-theme="starmap"] h2 { color: #efe2c2; letter-spacing: .1em; }
-[data-theme="starmap"] h2::before { content: ""; width: 5px; height: 5px; background: var(--gold); transform: rotate(45deg); }
-[data-theme="starmap"] h2::after { display: none; }
-[data-theme="starmap"] .fold-t { color: #f1e6cc; }
+html.sky[data-theme] .crow-ic { width: 38px; height: 38px; border-radius: 10px; color: var(--cc); background: color-mix(in srgb, var(--cc) 14%, rgba(var(--sk-d0),.8)); border: 1px solid color-mix(in srgb, var(--cc) 35%, transparent); }
+html.sky[data-theme] .info-grid { gap: 10px !important; border: 0; background: none; }
+html.sky[data-theme] .info-grid div { background: var(--glass) !important; border: 1px solid var(--gline) !important; border-radius: 12px !important; }
+html.sky[data-theme] .row { border-color: rgba(var(--sk-acc),.12); }
+html.sky[data-theme] h2 { color: rgb(var(--sk-hi)); letter-spacing: .1em; }
+html.sky[data-theme] h2::before { content: ""; width: 5px; height: 5px; background: var(--gold); transform: rotate(45deg); }
+html.sky[data-theme] h2::after { display: none; }
+html.sky[data-theme] .fold-t { color: rgb(var(--sk-tx)); }
 
 /* 銀行帳戶圖示：亮色圓角方塊 */
-[data-theme="starmap"] .acc-ic { border-radius: 12px; width: 42px; height: 42px; background: linear-gradient(145deg, hsl(var(--h) 55% 52%), hsl(var(--h) 60% 32%)); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 4px 10px rgba(0,0,0,.35); }
+html.sky[data-theme] .acc-ic { border-radius: 12px; width: 42px; height: 42px; background: linear-gradient(145deg, hsl(var(--h) 55% 52%), hsl(var(--h) 60% 32%)); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 4px 10px rgba(0,0,0,.35); }
 
 /* 總覽羅盤 */
-[data-theme="starmap"] .dash { padding-top: 14px; background: radial-gradient(80% 60% at 50% 55%, rgba(50,80,66,.45), transparent 70%), var(--glass) !important; }
-[data-theme="starmap"] .dash-head .lbl { color: #cfc6ad; letter-spacing: .3em; }
-[data-theme="starmap"] .dash-num { color: #f6eedb; }
-[data-theme="starmap"] .compass2 { filter: drop-shadow(0 0 18px rgba(207,174,110,.25)); }
-[data-theme="starmap"] .compass2 .cbase { fill: rgba(16,30,26,.9); stroke: #d4b373; stroke-width: 1.6; }
-[data-theme="starmap"] .compass2 .rc { fill: #13231e; }
-[data-theme="starmap"] .compass2 .rs1.a { fill: #e0c385; } [data-theme="starmap"] .compass2 .rs1.b { fill: #94763f; }
-[data-theme="starmap"] .compass2 .rs2.a { fill: #b8995d; opacity: .9; } [data-theme="starmap"] .compass2 .rs2.b { fill: #5d4a28; opacity: .9; }
-[data-theme="starmap"] .compass2 .rs1, [data-theme="starmap"] .compass2 .rs2 { stroke: #3a2e18; }
-[data-theme="starmap"] .compass2 .cr { opacity: .9; }
-[data-theme="starmap"] .cn-ic { width: 50px; height: 50px; border: 2px solid #d4b373; box-shadow: 0 0 14px rgba(207,174,110,.35), 0 6px 14px rgba(0,0,0,.5), inset 0 2px 4px rgba(255,255,255,.35), inset 0 -6px 10px rgba(0,0,0,.35) !important; color: #fff; }
-[data-theme="starmap"] .cnode.nw .cn-ic { background: radial-gradient(circle at 35% 28%, #7ccaa6, #2f7a5a 60%, #1c4a37) !important; }
-[data-theme="starmap"] .cnode.ne .cn-ic { background: radial-gradient(circle at 35% 28%, #8fb3a6, #3e6a5e 60%, #23423a) !important; }
-[data-theme="starmap"] .cnode.sw .cn-ic { background: radial-gradient(circle at 35% 28%, #e08a78, #a2402f 60%, #5e2018) !important; }
-[data-theme="starmap"] .cnode.se .cn-ic { background: radial-gradient(circle at 35% 28%, #b7c0cc, #6b7684 60%, #3a424d) !important; }
-[data-theme="starmap"] .cn-t { color: #f1e6cc; font-weight: 700; }
-[data-theme="starmap"] .cn-p { color: #e6dcc2; font-weight: 600; }
-[data-theme="starmap"] .scenery, [data-theme="starmap"] .explore { display: none; }
+html.sky[data-theme] .dash { padding-top: 14px; background: radial-gradient(80% 60% at 50% 55%, rgba(var(--sk-d2),.45), transparent 70%), var(--glass) !important; }
+html.sky[data-theme] .dash-head .lbl { color: rgb(var(--sk-tx)); letter-spacing: .3em; }
+html.sky[data-theme] .dash-num { color: rgb(var(--sk-tx)); }
+html.sky[data-theme] .compass2 { filter: drop-shadow(0 0 18px rgba(var(--sk-acc),.25)); }
+html.sky[data-theme] .compass2 .cbase { fill: rgba(var(--sk-d1),.9); stroke: rgb(var(--sk-acc)); stroke-width: 1.6; }
+html.sky[data-theme] .compass2 .rc { fill: rgb(var(--sk-d1)); }
+html.sky[data-theme] .compass2 .rs1.a { fill: rgb(var(--sk-hi)); } html.sky[data-theme] .compass2 .rs1.b { fill: rgb(var(--sk-lo)); }
+html.sky[data-theme] .compass2 .rs2.a { fill: rgb(var(--sk-acc)); opacity: .9; } html.sky[data-theme] .compass2 .rs2.b { fill: rgb(var(--sk-d2)); opacity: .9; }
+html.sky[data-theme] .compass2 .rs1, html.sky[data-theme] .compass2 .rs2 { stroke: rgb(var(--sk-d2)); }
+html.sky[data-theme] .compass2 .cr { opacity: .9; }
+html.sky[data-theme] .cn-ic { width: 50px; height: 50px; border: 2px solid rgb(var(--sk-acc)); box-shadow: 0 0 14px rgba(var(--sk-acc),.35), 0 6px 14px rgba(0,0,0,.5), inset 0 2px 4px rgba(255,255,255,.35), inset 0 -6px 10px rgba(0,0,0,.35) !important; color: #fff; }
+html.sky[data-theme] .cnode.nw .cn-ic { background: radial-gradient(circle at 35% 28%, #7ccaa6, #2f7a5a 60%, #1c4a37) !important; }
+html.sky[data-theme] .cnode.ne .cn-ic { background: radial-gradient(circle at 35% 28%, #8fb3a6, #3e6a5e 60%, #23423a) !important; }
+html.sky[data-theme] .cnode.sw .cn-ic { background: radial-gradient(circle at 35% 28%, #e08a78, #a2402f 60%, #5e2018) !important; }
+html.sky[data-theme] .cnode.se .cn-ic { background: radial-gradient(circle at 35% 28%, #b7c0cc, #6b7684 60%, #3a424d) !important; }
+html.sky[data-theme] .cn-t { color: rgb(var(--sk-tx)); font-weight: 700; }
+html.sky[data-theme] .cn-p { color: rgb(var(--sk-tx)); font-weight: 600; }
+html.sky[data-theme] .scenery, html.sky[data-theme] .explore { display: none; }
 .ver-trend { display: none; }
-[data-theme="starmap"] .ver-trend { display: block; margin-top: 12px; }
-[data-theme="starmap"] .ver-trend .tp-head { display: flex; justify-content: space-between; align-items: center; }
-[data-theme="starmap"] .ver-trend h4 { margin: 0; font-family: var(--serif-tc); font-size: 16px; color: #f1e6cc; }
+html.sky[data-theme] .ver-trend { display: block; margin-top: 12px; }
+html.sky[data-theme] .ver-trend .tp-head { display: flex; justify-content: space-between; align-items: center; }
+html.sky[data-theme] .ver-trend h4 { margin: 0; font-family: var(--serif-tc); font-size: 16px; color: rgb(var(--sk-tx)); }
 
 /* 信用卡卡面：深色玻璃＋金邊＋金色走勢線 */
-[data-theme="starmap"] .cc {
-  border-radius: 18px; border: 1px solid rgba(222,190,125,.6);
-  background: radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--cc) 30%, transparent), transparent 60%), linear-gradient(140deg, rgba(48,62,54,.95), rgba(14,22,19,.97));
-  box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 0 26px rgba(207,174,110,.18), 0 16px 34px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,240,210,.18);
+html.sky[data-theme] .cc {
+  border-radius: 18px; border: 1px solid rgba(var(--sk-acc),.6);
+  background: radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--cc) 30%, transparent), transparent 60%), linear-gradient(140deg, rgba(var(--sk-d2),.95), rgba(var(--sk-d0),.97));
+  box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 0 26px rgba(var(--sk-acc),.18), 0 16px 34px rgba(0,0,0,.55), inset 0 1px 0 rgba(var(--sk-hi),.18);
   outline: 0;
 }
-[data-theme="starmap"] .cc::after { display: none; }
-[data-theme="starmap"] .cc-sky { display: block; opacity: .9; }
-[data-theme="starmap"] .cc-sky polyline { stroke: #e2c486; opacity: .75; stroke-width: 1.2; }
-[data-theme="starmap"] .cc-sky circle { fill: #f0d69a; }
-[data-theme="starmap"] .cc-name { color: #f2e1b8; }
-[data-theme="starmap"] .cc-mid b { color: #fbf3df; }
+html.sky[data-theme] .cc::after { display: none; }
+html.sky[data-theme] .cc-sky { display: block; opacity: .9; }
+html.sky[data-theme] .cc-sky polyline { stroke: rgb(var(--sk-hi)); opacity: .75; stroke-width: 1.2; }
+html.sky[data-theme] .cc-sky circle { fill: rgb(var(--sk-hi)); }
+html.sky[data-theme] .cc-name { color: rgb(var(--sk-hi)); }
+html.sky[data-theme] .cc-mid b { color: rgb(var(--sk-tx)); }
 
 /* 膠囊、分段、區間：金框膠囊 */
-[data-theme="starmap"] :is(.pills, .rchips) button { border: 1px solid rgba(207,174,110,.28) !important; background: rgba(16,26,22,.7) !important; border-radius: 99px; color: #bdb7a5; }
-[data-theme="starmap"] :is(.pills, .rchips) button.on { border-color: rgba(222,190,125,.8) !important; color: #f1dcab !important; background: linear-gradient(180deg, rgba(70,72,48,.6), rgba(34,42,32,.7)) !important; box-shadow: 0 0 12px rgba(207,174,110,.2); }
-[data-theme="starmap"] .seg-ctl { background: rgba(14,22,19,.75); border: 1px solid var(--gline); border-radius: 12px; padding: 4px; }
-[data-theme="starmap"] .seg-ctl button { border-radius: 9px; }
-[data-theme="starmap"] .seg-ctl button.on { background: linear-gradient(180deg, #d9bd7f, #a9864a); color: #1a160d; box-shadow: none; }
-[data-theme="starmap"] .btn { border-radius: 12px; }
-[data-theme="starmap"] .btn.primary { background: linear-gradient(180deg, #e2c78a, #a9864a); color: #1a160d; border: 1px solid #ecd59f; box-shadow: 0 4px 16px rgba(207,174,110,.25), inset 0 1px 0 rgba(255,245,215,.6); }
-[data-theme="starmap"] .btn.outline, [data-theme="starmap"] .btn.ghost { border: 1px solid rgba(207,174,110,.45); background: rgba(16,26,22,.6); border-radius: 99px; color: #ead2a0; }
-[data-theme="starmap"] .qa button .i { background: radial-gradient(circle at 35% 30%, #2a3e36, #101b17); border: 1px solid rgba(222,190,125,.6); }
-[data-theme="starmap"] .inv-ic { border: 1.5px solid rgba(222,190,125,.7); box-shadow: inset 0 2px 4px rgba(255,255,255,.3), inset 0 -5px 8px rgba(0,0,0,.3), 0 4px 10px rgba(0,0,0,.4); }
+html.sky[data-theme] :is(.pills, .rchips) button { border: 1px solid rgba(var(--sk-acc),.28) !important; background: rgba(var(--sk-d1),.7) !important; border-radius: 99px; color: rgb(var(--sk-mu)); }
+html.sky[data-theme] :is(.pills, .rchips) button.on { border-color: rgba(var(--sk-acc),.8) !important; color: rgb(var(--sk-hi)) !important; background: linear-gradient(180deg, rgba(var(--sk-d2),.6), rgba(var(--sk-d1),.7)) !important; box-shadow: 0 0 12px rgba(var(--sk-acc),.2); }
+html.sky[data-theme] .seg-ctl { background: rgba(var(--sk-d0),.75); border: 1px solid var(--gline); border-radius: 12px; padding: 4px; }
+html.sky[data-theme] .seg-ctl button { border-radius: 9px; }
+html.sky[data-theme] .seg-ctl button.on { background: linear-gradient(180deg, rgb(var(--sk-acc)), rgb(var(--sk-acc))); color: rgb(var(--sk-d1)); box-shadow: none; }
+html.sky[data-theme] .btn { border-radius: 12px; }
+html.sky[data-theme] .btn.primary { background: linear-gradient(180deg, rgb(var(--sk-hi)), rgb(var(--sk-acc))); color: rgb(var(--sk-d1)); border: 1px solid rgb(var(--sk-hi)); box-shadow: 0 4px 16px rgba(var(--sk-acc),.25), inset 0 1px 0 rgba(var(--sk-tx),.6); }
+html.sky[data-theme] .btn.outline, html.sky[data-theme] .btn.ghost { border: 1px solid rgba(var(--sk-acc),.45); background: rgba(var(--sk-d1),.6); border-radius: 99px; color: rgb(var(--sk-hi)); }
+html.sky[data-theme] .qa button .i { background: radial-gradient(circle at 35% 30%, rgb(var(--sk-d2)), rgb(var(--sk-d1))); border: 1px solid rgba(var(--sk-acc),.6); }
+html.sky[data-theme] .inv-ic { border: 1.5px solid rgba(var(--sk-acc),.7); box-shadow: inset 0 2px 4px rgba(255,255,255,.3), inset 0 -5px 8px rgba(0,0,0,.3), 0 4px 10px rgba(0,0,0,.4); }
 
 /* 表單抽屜 */
-[data-theme="starmap"] .modal { background: rgba(4,8,7,.62); }
-[data-theme="starmap"] .sheet { background: linear-gradient(170deg, rgba(30,44,38,.97), rgba(12,20,17,.98)) !important; border: 1px solid var(--gline); border-bottom: 0; border-radius: 22px 22px 0 0 !important; box-shadow: 0 -16px 40px rgba(0,0,0,.6); }
-[data-theme="starmap"] .sheet h3 { color: #f1e6cc; }
-[data-theme="starmap"] :is(input, select, textarea) { background: rgba(10,18,15,.85); border: 1px solid rgba(207,174,110,.3); border-radius: 10px; color: var(--text); }
-[data-theme="starmap"] .fab-grid button { background: var(--glass); border: 1px solid var(--gline); border-radius: 14px; }
+html.sky[data-theme] .modal { background: rgba(var(--sk-d0),.62); }
+html.sky[data-theme] .sheet { background: linear-gradient(170deg, rgba(var(--sk-d1),.97), rgba(var(--sk-d0),.98)) !important; border: 1px solid var(--gline); border-bottom: 0; border-radius: 22px 22px 0 0 !important; box-shadow: 0 -16px 40px rgba(0,0,0,.6); }
+html.sky[data-theme] .sheet h3 { color: rgb(var(--sk-tx)); }
+html.sky[data-theme] :is(input, select, textarea) { background: rgba(var(--sk-d0),.85); border: 1px solid rgba(var(--sk-acc),.3); border-radius: 10px; color: var(--text); }
+html.sky[data-theme] .fab-grid button { background: var(--glass); border: 1px solid var(--gline); border-radius: 14px; }
 
 /* 底部導覽＋金圈記帳鈕 */
-[data-theme="starmap"] .tabs { background: linear-gradient(180deg, rgba(26,38,33,.92), rgba(12,20,17,.95)) !important; border: 1px solid var(--gline) !important; border-radius: 22px !important; box-shadow: 0 12px 30px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,245,220,.06) !important; backdrop-filter: blur(12px); }
-[data-theme="starmap"] .tabs button.on { color: #f1dcab; }
-[data-theme="starmap"] .tabs .fab {
-  border-radius: 50% !important; border: 2px solid #d9b878 !important;
-  background: radial-gradient(circle at 50% 40%, #2e3a2c, #141c17 70%) !important;
-  box-shadow: 0 0 0 4px rgba(10,18,15,.9), 0 0 0 5px rgba(217,184,120,.55), 0 0 26px rgba(217,184,120,.35), 0 8px 18px rgba(0,0,0,.6) !important;
+html.sky[data-theme] .tabs { background: linear-gradient(180deg, rgba(var(--sk-d1),.92), rgba(var(--sk-d0),.95)) !important; border: 1px solid var(--gline) !important; border-radius: 22px !important; box-shadow: 0 12px 30px rgba(0,0,0,.6), inset 0 1px 0 rgba(var(--sk-tx),.06) !important; backdrop-filter: blur(12px); }
+html.sky[data-theme] .tabs button.on { color: rgb(var(--sk-hi)); }
+html.sky[data-theme] .tabs .fab {
+  border-radius: 50% !important; border: 2px solid rgb(var(--sk-acc)) !important;
+  background: radial-gradient(circle at 50% 40%, rgb(var(--sk-d2)), rgb(var(--sk-d1)) 70%) !important;
+  box-shadow: 0 0 0 4px rgba(var(--sk-d0),.9), 0 0 0 5px rgba(var(--sk-acc),.55), 0 0 26px rgba(var(--sk-acc),.35), 0 8px 18px rgba(0,0,0,.6) !important;
   transition: transform .2s;
 }
-[data-theme="starmap"] .tabs .fab svg { fill: #ecd29a; filter: drop-shadow(0 0 6px rgba(236,210,154,.5)); transition: transform .25s; }
+html.sky[data-theme] .tabs .fab svg { fill: rgb(var(--sk-hi)); filter: drop-shadow(0 0 6px rgba(var(--sk-hi),.5)); transition: transform .25s; }
 body.fab-open .tabs .fab svg { transform: rotate(45deg) scale(.9); }
 
 /* 放射選單 */
-.fab-radial { position: fixed; inset: 0; z-index: 5; background: rgba(4,8,7,.55); }
-.fab-radial .fr-btn { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 40px); width: 72px; margin-left: -36px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; cursor: pointer; color: #f1e6cc; font-family: var(--serif-tc); font-weight: 700; font-size: 13px; transform: translate(0, 0); opacity: 0; transition: transform .28s cubic-bezier(.2,.9,.3,1.2), opacity .2s; }
-.fab-radial .fr-btn .i { width: 52px; height: 52px; padding: 14px; border-radius: 50%; color: #ecd29a; background: radial-gradient(circle at 35% 30%, #2c3f36, #111b17); border: 1.5px solid rgba(222,190,125,.75); box-shadow: 0 0 14px rgba(207,174,110,.3), 0 6px 14px rgba(0,0,0,.5); }
+.fab-radial { position: fixed; inset: 0; z-index: 5; background: rgba(var(--sk-d0),.55); }
+.fab-radial .fr-btn { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 40px); width: 72px; margin-left: -36px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; cursor: pointer; color: rgb(var(--sk-tx)); font-family: var(--serif-tc); font-weight: 700; font-size: 13px; transform: translate(0, 0); opacity: 0; transition: transform .28s cubic-bezier(.2,.9,.3,1.2), opacity .2s; }
+.fab-radial .fr-btn .i { width: 52px; height: 52px; padding: 14px; border-radius: 50%; color: rgb(var(--sk-hi)); background: radial-gradient(circle at 35% 30%, rgb(var(--sk-d2)), rgb(var(--sk-d1))); border: 1.5px solid rgba(var(--sk-acc),.75); box-shadow: 0 0 14px rgba(var(--sk-acc),.3), 0 6px 14px rgba(0,0,0,.5); }
 .fab-radial.show .fr-btn { opacity: 1; transform: translate(var(--x), var(--y)); }
-.fab-radial .fr-more { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 250px); padding: 8px 18px; border-radius: 99px; border: 1px solid rgba(222,190,125,.5); background: rgba(16,26,22,.85); color: #ead2a0; font-family: var(--serif-tc); font-weight: 600; cursor: pointer; opacity: 0; transition: opacity .2s .1s; }
+.fab-radial .fr-more { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 250px); padding: 8px 18px; border-radius: 99px; border: 1px solid rgba(var(--sk-acc),.5); background: rgba(var(--sk-d1),.85); color: rgb(var(--sk-hi)); font-family: var(--serif-tc); font-weight: 600; cursor: pointer; opacity: 0; transition: opacity .2s .1s; }
 .fab-radial.show .fr-more { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .fab-radial .fr-btn, .fab-radial .fr-more { transition: none; } }
 
@@ -1544,121 +1544,215 @@ body.fab-open .tabs .fab svg { transform: rotate(45deg) scale(.9); }
 .tt-starmap .tt-img { background: radial-gradient(60% 50% at 20% 20%, #3c5a40 0 40%, transparent 41%), radial-gradient(50% 45% at 85% 85%, #34503a 0 40%, transparent 41%), linear-gradient(#1a2b25, #0b1512); }
 .tt-starmap .tt-orb { background: radial-gradient(circle at 35% 30%, #2e3a2c, #141c17); box-shadow: 0 0 12px #d9b87866, inset 0 0 0 2px #d9b878; }
 .tt-starmap .tt-name { color: #f1e6cc; } .tt-starmap .tt-name small, .tt-starmap .tt-desc { color: #b9b5a6; }
-[data-theme="starmap"] { --c-stock: #6e9fb2; }
-[data-theme="starmap"] .inv-ic.stocks { background: radial-gradient(circle at 35% 30%, #e48a72, #b04a36 60%, #6a2618) !important; }
-[data-theme="starmap"] .inv-ic.crypto { background: radial-gradient(circle at 35% 30%, #f0cd7a, #c18f2e 60%, #6e4f14) !important; }
+html.sky[data-theme] { --c-stock: #6e9fb2; }
+html.sky[data-theme] .inv-ic.stocks { background: radial-gradient(circle at 35% 30%, #e48a72, #b04a36 60%, #6a2618) !important; }
+html.sky[data-theme] .inv-ic.crypto { background: radial-gradient(circle at 35% 30%, #f0cd7a, #c18f2e 60%, #6e4f14) !important; }
 .fab-radial .fr-more { bottom: calc(env(safe-area-inset-bottom) + 286px); }
 
 /* ===== 夜苑 v2：金屬描邊、星盤、桌機寬度 ===== */
-[data-theme="starmap"] {
-  --edge: linear-gradient(135deg, rgba(246,222,160,.85), rgba(120,92,44,.55) 30%, rgba(214,180,112,.7) 55%, rgba(90,68,32,.45) 80%, rgba(236,206,140,.8));
-  --edge-soft: linear-gradient(135deg, rgba(246,222,160,.5), rgba(120,92,44,.25) 35%, rgba(214,180,112,.4) 60%, rgba(90,68,32,.2) 85%, rgba(236,206,140,.45));
-  --glass: linear-gradient(165deg, rgba(36,56,49,.82), rgba(16,27,23,.9) 55%, rgba(11,19,16,.94));
+html.sky[data-theme] {
+  --edge: linear-gradient(135deg, rgba(var(--sk-hi),.85), rgba(var(--sk-lo),.55) 30%, rgba(var(--sk-acc),.7) 55%, rgba(var(--sk-d2),.45) 80%, rgba(var(--sk-hi),.8));
+  --edge-soft: linear-gradient(135deg, rgba(var(--sk-hi),.5), rgba(var(--sk-lo),.25) 35%, rgba(var(--sk-acc),.4) 60%, rgba(var(--sk-d2),.2) 85%, rgba(var(--sk-hi),.45));
+  --glass: linear-gradient(165deg, rgba(var(--sk-d2),.82), rgba(var(--sk-d1),.9) 55%, rgba(var(--sk-d0),.94));
 }
 /* 金屬漸層邊框（padding-box 玻璃＋border-box 金邊） */
-[data-theme="starmap"] :is(.panel, .fold, .sum-card, .hero2, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip, .info-grid div, .seg-ctl) {
+html.sky[data-theme] :is(.panel, .fold, .sum-card, .hero2, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip, .info-grid div, .seg-ctl) {
   border: 1px solid transparent !important;
   background: var(--glass) padding-box, var(--edge-soft) border-box !important;
-  box-shadow: inset 0 1px 0 rgba(255,240,205,.08), 0 0 0 .5px rgba(0,0,0,.6), 0 12px 28px rgba(0,0,0,.45) !important;
+  box-shadow: inset 0 1px 0 rgba(var(--sk-hi),.08), 0 0 0 .5px rgba(0,0,0,.6), 0 12px 28px rgba(0,0,0,.45) !important;
 }
-[data-theme="starmap"] :is(.dash, .sum-card, .hero2) {
-  background: radial-gradient(90% 60% at 50% 40%, rgba(48,84,70,.4), transparent 70%) padding-box, var(--glass) padding-box, var(--edge) border-box !important;
-  box-shadow: inset 0 1px 0 rgba(255,240,205,.12), 0 0 30px rgba(207,174,110,.12), 0 16px 36px rgba(0,0,0,.5) !important;
+html.sky[data-theme] :is(.dash, .sum-card, .hero2) {
+  background: radial-gradient(90% 60% at 50% 40%, rgba(var(--sk-d2),.4), transparent 70%) padding-box, var(--glass) padding-box, var(--edge) border-box !important;
+  box-shadow: inset 0 1px 0 rgba(var(--sk-hi),.12), 0 0 30px rgba(var(--sk-acc),.12), 0 16px 36px rgba(0,0,0,.5) !important;
   border: 1.2px solid transparent !important;
 }
-[data-theme="starmap"] .dash { border-radius: 26px !important; padding: 16px 10px 22px; }
-[data-theme="starmap"] :is(.crow, .inv-row, .tile):hover, [data-theme="starmap"] .inv-row.on, [data-theme="starmap"] .crow.sel {
-  background: radial-gradient(120% 120% at 0% 0%, rgba(207,174,110,.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important;
-  box-shadow: 0 0 22px rgba(222,190,125,.22), inset 0 1px 0 rgba(255,240,205,.14), 0 12px 28px rgba(0,0,0,.45) !important;
+html.sky[data-theme] .dash { border-radius: 26px !important; padding: 16px 10px 22px; }
+html.sky[data-theme] :is(.crow, .inv-row, .tile):hover, html.sky[data-theme] .inv-row.on, html.sky[data-theme] .crow.sel {
+  background: radial-gradient(120% 120% at 0% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important;
+  box-shadow: 0 0 22px rgba(var(--sk-acc),.22), inset 0 1px 0 rgba(var(--sk-hi),.14), 0 12px 28px rgba(0,0,0,.45) !important;
 }
 /* 星盤 */
-[data-theme="starmap"] .dash-head { display: none; }
-[data-theme="starmap"] .dial-box { width: min(100%, 360px); margin: 26px auto 40px; }
+html.sky[data-theme] .dash-head { display: none; }
+html.sky[data-theme] .dial-box { width: min(100%, 360px); margin: 26px auto 40px; }
 .vdial { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 24px rgba(0,0,0,.6)); }
-.vdial .vt { stroke: rgba(226,192,124,.45); stroke-width: .7; } .vdial .vt.m { stroke: rgba(236,206,140,.7); stroke-width: 1; } .vdial .vt.M { stroke: #ecd08f; stroke-width: 1.8; }
-.vdial .vorbit ellipse { fill: none; stroke: rgba(226,192,124,.22); stroke-width: .8; }
+.vdial .vt { stroke: rgba(var(--sk-acc),.45); stroke-width: .7; } .vdial .vt.m { stroke: rgba(var(--sk-hi),.7); stroke-width: 1; } .vdial .vt.M { stroke: rgb(var(--sk-hi)); stroke-width: 1.8; }
+.vdial .vorbit ellipse { fill: none; stroke: rgba(var(--sk-acc),.22); stroke-width: .8; }
 .vdial .vtrack { fill: none; stroke: rgba(0,0,0,.45); stroke-width: 12; }
 .vdial .vr { fill: none; stroke-width: 9; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(0,0,0,.6)); }
 .vdial .vr.debt { stroke: var(--c-debt); stroke-width: 3; }
-.vdial .vstars circle { fill: #f1d9a2; opacity: .55; }
+.vdial .vstars circle { fill: rgb(var(--sk-hi)); opacity: .55; }
 .vcenter { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; width: 50%; text-align: center; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
-.vc-l { font-family: var(--serif-tc); font-weight: 700; font-size: 15px; letter-spacing: .3em; color: #e2d6b8; padding-left: .3em; }
-.vc-n { font-family: var(--num); font-weight: 700; font-size: clamp(19px, 6.4vw, 26px); color: #fbf3df; line-height: 1.25; white-space: nowrap; text-shadow: 0 2px 10px rgba(0,0,0,.7); }
-.vc-c { font-weight: 700; font-size: 14px; margin-top: 2px; } .vc-c.pos { color: #8fd8a8; } .vc-c.neg { color: #f09a8a; }
-.vc-s { font-size: 11.5px; color: #bfb7a0; font-weight: 600; }
+.vc-l { font-family: var(--serif-tc); font-weight: 700; font-size: 15px; letter-spacing: .3em; color: rgb(var(--sk-hi)); padding-left: .3em; }
+.vc-n { font-family: var(--num); font-weight: 700; font-size: clamp(19px, 6.4vw, 26px); color: rgb(var(--sk-tx)); line-height: 1.25; white-space: nowrap; text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+.vc-c { font-weight: 700; font-size: 14px; margin-top: 2px; } .vc-c.pos { color: rgb(var(--sk-tx)); } .vc-c.neg { color: rgb(var(--sk-acc)); }
+.vc-s { font-size: 11.5px; color: rgb(var(--sk-mu)); font-weight: 600; }
 /* 四個資產圓球坐在外圈上：上／左／右／下 */
-[data-theme="starmap"] .cnode { width: 76px; transform: translate(-50%, -27px); z-index: 2; }
-[data-theme="starmap"] .cnode.nw { left: 50% !important; top: 3% !important; right: auto !important; bottom: auto !important; }
-[data-theme="starmap"] .cnode.ne { left: 4% !important; top: 50% !important; right: auto !important; bottom: auto !important; }
-[data-theme="starmap"] .cnode.sw { left: 96% !important; top: 50% !important; right: auto !important; bottom: auto !important; }
-[data-theme="starmap"] .cnode.se { left: 50% !important; top: 97% !important; right: auto !important; bottom: auto !important; }
-[data-theme="starmap"] .cn-ic { width: 54px; height: 54px; border: 3px solid transparent !important; }
-[data-theme="starmap"] .cnode.nw .cn-ic { background: radial-gradient(circle at 35% 28%, #8edcb6, #2f8460 55%, #174632) padding-box, var(--edge) border-box !important; }
-[data-theme="starmap"] .cnode.ne .cn-ic { background: radial-gradient(circle at 35% 28%, #a6d0c2, #3f7466 55%, #1e3e36) padding-box, var(--edge) border-box !important; }
-[data-theme="starmap"] .cnode.sw .cn-ic { background: radial-gradient(circle at 35% 28%, #f09a86, #b0412f 55%, #5c1a12) padding-box, var(--edge) border-box !important; }
-[data-theme="starmap"] .cnode.se .cn-ic { background: radial-gradient(circle at 35% 28%, #d2d8e2, #788496 55%, #39414e) padding-box, var(--edge) border-box !important; }
-[data-theme="starmap"] .cn-ic .i { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
-[data-theme="starmap"] .cn-t { margin-top: 3px; text-shadow: 0 1px 6px rgba(0,0,0,.9); }
-[data-theme="starmap"] .cn-p { text-shadow: 0 1px 6px rgba(0,0,0,.9); }
-[data-theme="starmap"] .ver-trend .vt-r { display: flex; align-items: center; gap: 8px; }
+html.sky[data-theme] .cnode { width: 76px; transform: translate(-50%, -27px); z-index: 2; }
+html.sky[data-theme] .cnode.nw { left: 50% !important; top: 3% !important; right: auto !important; bottom: auto !important; }
+html.sky[data-theme] .cnode.ne { left: 4% !important; top: 50% !important; right: auto !important; bottom: auto !important; }
+html.sky[data-theme] .cnode.sw { left: 96% !important; top: 50% !important; right: auto !important; bottom: auto !important; }
+html.sky[data-theme] .cnode.se { left: 50% !important; top: 97% !important; right: auto !important; bottom: auto !important; }
+html.sky[data-theme] .cn-ic { width: 54px; height: 54px; border: 3px solid transparent !important; }
+html.sky[data-theme] .cnode.nw .cn-ic { background: radial-gradient(circle at 35% 28%, #8edcb6, #2f8460 55%, #174632) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme] .cnode.ne .cn-ic { background: radial-gradient(circle at 35% 28%, #a6d0c2, #3f7466 55%, #1e3e36) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme] .cnode.sw .cn-ic { background: radial-gradient(circle at 35% 28%, #f09a86, #b0412f 55%, #5c1a12) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme] .cnode.se .cn-ic { background: radial-gradient(circle at 35% 28%, #d2d8e2, #788496 55%, #39414e) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme] .cn-ic .i { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+html.sky[data-theme] .cn-t { margin-top: 3px; text-shadow: 0 1px 6px rgba(0,0,0,.9); }
+html.sky[data-theme] .cn-p { text-shadow: 0 1px 6px rgba(0,0,0,.9); }
+html.sky[data-theme] .ver-trend .vt-r { display: flex; align-items: center; gap: 8px; }
 /* 金色圓環記帳鈕 */
-[data-theme="starmap"] .tabs .fab {
+html.sky[data-theme] .tabs .fab {
   border: 3px solid transparent !important;
-  background: radial-gradient(circle at 50% 38%, #2f3d30, #121a15 72%) padding-box, conic-gradient(from 200deg, #fbe8b0, #a37a38, #f3d58f, #7d5c28, #f6dc9a, #a37a38, #fbe8b0) border-box !important;
-  box-shadow: 0 0 0 4px rgba(10,18,15,.95), 0 0 0 5.5px rgba(222,190,125,.6), 0 0 30px rgba(222,190,125,.4), 0 10px 22px rgba(0,0,0,.6) !important;
+  background: radial-gradient(circle at 50% 38%, rgb(var(--sk-d2)), rgb(var(--sk-d1)) 72%) padding-box, conic-gradient(from 200deg, rgb(var(--sk-hi)), rgb(var(--sk-lo)), rgb(var(--sk-hi)), rgb(var(--sk-lo)), rgb(var(--sk-hi)), rgb(var(--sk-lo)), rgb(var(--sk-hi))) border-box !important;
+  box-shadow: 0 0 0 4px rgba(var(--sk-d0),.95), 0 0 0 5.5px rgba(var(--sk-acc),.6), 0 0 30px rgba(var(--sk-acc),.4), 0 10px 22px rgba(0,0,0,.6) !important;
 }
-[data-theme="starmap"] .tabs { border: 1px solid transparent !important; background: linear-gradient(180deg, rgba(28,42,36,.94), rgba(11,19,16,.96)) padding-box, var(--edge-soft) border-box !important; }
-[data-theme="starmap"] .toptabs button.on { border: 1px solid transparent; background: linear-gradient(180deg, rgba(70,74,50,.7), rgba(30,40,32,.8)) padding-box, var(--edge) border-box; }
+html.sky[data-theme] .tabs { border: 1px solid transparent !important; background: linear-gradient(180deg, rgba(var(--sk-d1),.94), rgba(var(--sk-d0),.96)) padding-box, var(--edge-soft) border-box !important; }
+html.sky[data-theme] .toptabs button.on { border: 1px solid transparent; background: linear-gradient(180deg, rgba(var(--sk-d2),.7), rgba(var(--sk-d1),.8)) padding-box, var(--edge) border-box; }
 /* 帳戶總覽卡：右側淡山景 */
-[data-theme="starmap"] .sum-art { opacity: .2; }
+html.sky[data-theme] .sum-art { opacity: .2; }
 /* 桌機：頁首與分頁跟內容同寬 */
-[data-theme="starmap"] .top { padding-left: max(16px, calc((100% - 640px) / 2 + 16px)); padding-right: max(16px, calc((100% - 640px) / 2 + 16px)); }
-[data-theme="starmap"] .hdate, [data-theme="starmap"] .toptabs { max-width: 616px; margin-left: auto; margin-right: auto; }
-[data-theme="starmap"] .hdate { max-width: 640px; }
-[data-theme="starmap"] .cnode .cn-t, [data-theme="starmap"] .cnode .cn-p { background: rgba(9,16,13,.72); padding: 0 7px; border-radius: 6px; line-height: 1.45; }
-[data-theme="starmap"] .cnode .cn-t { margin-top: 4px; border-radius: 6px 6px 0 0; } [data-theme="starmap"] .cnode .cn-p { border-radius: 0 0 6px 6px; }
+html.sky[data-theme] .top { padding-left: max(16px, calc((100% - 640px) / 2 + 16px)); padding-right: max(16px, calc((100% - 640px) / 2 + 16px)); }
+html.sky[data-theme] .hdate, html.sky[data-theme] .toptabs { max-width: 616px; margin-left: auto; margin-right: auto; }
+html.sky[data-theme] .hdate { max-width: 640px; }
+html.sky[data-theme] .cnode .cn-t, html.sky[data-theme] .cnode .cn-p { background: rgba(var(--sk-d0),.72); padding: 0 7px; border-radius: 6px; line-height: 1.45; }
+html.sky[data-theme] .cnode .cn-t { margin-top: 4px; border-radius: 6px 6px 0 0; } html.sky[data-theme] .cnode .cn-p { border-radius: 0 0 6px 6px; }
 
 /* --- 星圖秘境專屬 --- */
-[data-theme="starmap"] {
-  --night: #0d181a; --panel: rgba(20,36,37,.82); --panel-2: rgba(28,48,48,.88);
+html.sky[data-theme] {
+  --night: rgb(var(--sk-d0)); --panel: rgba(var(--sk-d1),.82); --panel-2: rgba(var(--sk-d1),.88);
   --c-bank: #5aa58a; --c-stock: #6e9fb2; --c-crypto: #d8a845; --c-recv: #8a7aa0; --c-debt: #c0584a;
   --title: "Yuji Ledger TC", "Yuji Syuku", "Noto Serif TC", serif; --serif-tc: var(--title);
-  --glass: linear-gradient(165deg, rgba(30,52,52,.84), rgba(14,26,27,.92) 55%, rgba(10,19,20,.95));
+  --glass: linear-gradient(165deg, rgba(var(--sk-d2),.84), rgba(var(--sk-d1),.92) 55%, rgba(var(--sk-d0),.95));
 }
-html[data-theme="starmap"] body { background: #0d181a !important; }
-html[data-theme="starmap"] body::before { background: linear-gradient(rgba(8,14,15,.15), rgba(8,14,15,.25)), url("star-bg.webp") center top / cover no-repeat, #0d181a !important; }
-[data-theme="starmap"] :is(h2, .fold-t, .crow-name, .cc-name, .inv-row .grow b, .sheet h3, .tt-name, .seg-ctl button, .cn-t, .lbl, .vc-l, .ver-trend h4, .fab-grid b, .toptabs button, .brand) { font-family: var(--title) !important; font-weight: 400 !important; }
+html.sky[data-theme] body { background: rgb(var(--sk-d0)) !important; }
+
+html.sky[data-theme] :is(h2, .fold-t, .crow-name, .cc-name, .inv-row .grow b, .sheet h3, .tt-name, .seg-ctl button, .cn-t, .lbl, .vc-l, .ver-trend h4, .fab-grid b, .toptabs button, .brand) { font-family: var(--title) !important; font-weight: 400 !important; }
 /* 星空儀表板：星座連線＋新月 */
-[data-theme="starmap"] .dash {
+html.sky[data-theme] .dash {
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 520'%3E%3Cg fill='none' stroke='%23d9b878' stroke-opacity='.28' stroke-width='.8'%3E%3Cpath d='M30 70 72 48 110 82 150 60M300 40 338 70 372 52M320 430 352 470 384 450M40 300 70 330 52 372'/%3E%3Ccircle cx='330' cy='90' r='34' stroke-opacity='.18'/%3E%3C/g%3E%3Cg fill='%23f0dcaa'%3E%3Ccircle cx='30' cy='70' r='1.6'/%3E%3Ccircle cx='72' cy='48' r='2'/%3E%3Ccircle cx='110' cy='82' r='1.4'/%3E%3Ccircle cx='150' cy='60' r='1.8'/%3E%3Ccircle cx='300' cy='40' r='1.5'/%3E%3Ccircle cx='338' cy='70' r='2'/%3E%3Ccircle cx='372' cy='52' r='1.3'/%3E%3Ccircle cx='320' cy='430' r='1.5'/%3E%3Ccircle cx='352' cy='470' r='1.9'/%3E%3Ccircle cx='384' cy='450' r='1.3'/%3E%3Ccircle cx='40' cy='300' r='1.4'/%3E%3Ccircle cx='70' cy='330' r='1.8'/%3E%3Ccircle cx='52' cy='372' r='1.3'/%3E%3C/g%3E%3Cpath d='M62 420a34 34 0 1 0 40 40 27 27 0 1 1-40-40z' fill='%23e8cf95' fill-opacity='.85'/%3E%3C/svg%3E") center / 100% 100% no-repeat padding-box,
-    radial-gradient(80% 55% at 50% 45%, rgba(46,86,84,.5), transparent 70%) padding-box,
-    linear-gradient(180deg, rgba(16,32,34,.92), rgba(10,20,22,.95)) padding-box,
+    radial-gradient(80% 55% at 50% 45%, rgba(var(--sk-d2),.5), transparent 70%) padding-box,
+    linear-gradient(180deg, rgba(var(--sk-d1),.92), rgba(var(--sk-d0),.95)) padding-box,
     var(--edge) border-box !important;
 }
-[data-theme="starmap"] .dial-box { margin: 52px auto 56px; }
+html.sky[data-theme] .dial-box { margin: 52px auto 56px; }
 /* 帳戶／信用卡／投資總覽卡：底部金色山景 */
-html[data-theme="starmap"] :is(.sum-card, .hero2) {
+html.sky[data-theme] :is(.sum-card, .hero2) {
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23c9a46a' stop-opacity='.5'/%3E%3Cstop offset='1' stop-color='%23142424' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%23233a38' fill-opacity='.8'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%23162a29'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box,
-    radial-gradient(70% 70% at 75% 0%, rgba(201,164,106,.12), transparent 60%) padding-box,
+    radial-gradient(70% 70% at 75% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box,
     var(--glass) padding-box, var(--edge) border-box !important;
 }
-[data-theme="starmap"] .sum-art { display: none; }
+html.sky[data-theme] .sum-art { display: none; }
 /* 信用卡列：依卡色染底，末四碼 */
-html[data-theme="starmap"] .crow {
-  background: linear-gradient(100deg, color-mix(in srgb, var(--cc) 55%, #132423) 0%, rgba(16,30,30,.92) 70%) padding-box, var(--edge-soft) border-box !important;
+html.sky[data-theme] body .crow {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--cc) 55%, rgb(var(--sk-d1))) 0%, rgba(var(--sk-d1),.92) 70%) padding-box, var(--edge-soft) border-box !important;
 }
-[data-theme="starmap"] .crow-ic { background: rgba(10,18,18,.5); border: 1px solid rgba(222,190,125,.45); color: #e6c98f; }
+html.sky[data-theme] .crow-ic { background: rgba(var(--sk-d0),.5); border: 1px solid rgba(var(--sk-acc),.45); color: rgb(var(--sk-hi)); }
 .crow-l4 { display: none; }
-[data-theme="starmap"] .crow-l4 { display: block; font-family: var(--num); font-size: 12px; letter-spacing: .14em; color: #d6c9a8; margin: -1px 0 1px; }
+html.sky[data-theme] .crow-l4 { display: block; font-family: var(--num); font-size: 12px; letter-spacing: .14em; color: rgb(var(--sk-hi)); margin: -1px 0 1px; }
 /* 帳戶圖示：鮮明圓形 */
-[data-theme="starmap"] .acc-ic { border-radius: 50%; background: radial-gradient(circle at 35% 30%, hsl(var(--h) 65% 62%), hsl(var(--h) 60% 38%)); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 10px rgba(0,0,0,.35); }
+html.sky[data-theme] .acc-ic { border-radius: 50%; background: radial-gradient(circle at 35% 30%, hsl(var(--h) 65% 62%), hsl(var(--h) 60% 38%)); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 10px rgba(0,0,0,.35); }
 /* 投資配置甜甜圈配色：松綠／玫瑰／象牙 */
-[data-theme="starmap"] { --c-stock: #4f9a8a; }
+html.sky[data-theme] { --c-stock: #4f9a8a; }
 /* 主題卡 */
 .tt-starmap { background: #142424; }
 .tt-starmap .tt-img { background: radial-gradient(50% 50% at 50% 50%, transparent 40%, #d9b87855 41%, transparent 43%), radial-gradient(70% 70% at 50% 45%, #24403e, #0d181a); }
 .tt-starmap .tt-orb { background: radial-gradient(circle at 35% 30%, #2e3a2c, #141c17); box-shadow: 0 0 12px #d9b87866, inset 0 0 0 2px #d9b878; }
 .tt-starmap .tt-name { color: #f1e6cc; } .tt-starmap .tt-name small, .tt-starmap .tt-desc { color: #b9b5a6; }
-html[data-theme="starmap"] .crow.sel, html[data-theme="starmap"] .crow:hover { background: linear-gradient(100deg, color-mix(in srgb, var(--cc) 62%, #132423) 0%, rgba(16,30,30,.92) 70%) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme] body .crow.sel, html.sky[data-theme] body .crow:hover { background: linear-gradient(100deg, color-mix(in srgb, var(--cc) 62%, rgb(var(--sk-d1))) 0%, rgba(var(--sk-d1),.92) 70%) padding-box, var(--edge) border-box !important; }
+
+/* ===== 星象皮膚：七套配色（全部主題共用星圖秘境的版面） ===== */
+html.sky[data-theme="starmap"] {
+  --sk-d0: 13,24,26; --sk-d1: 22,38,39; --sk-d2: 40,62,60; --sk-acc: 214,180,116; --sk-hi: 241,218,165; --sk-lo: 128,98,52; --sk-tx: 241,233,215; --sk-mu: 185,182,166;
+  --c-bank: #5aa58a; --c-stock: #6e9fb2; --c-crypto: rgb(214,180,116); --c-recv: #8a7aa0; --c-debt: #c0584a; --c-liab: #c0584a;
+  --ok: #8fd0a4; --danger: #e48a7e; --faint: rgba(185,182,166,.75); --on-accent: rgb(13,24,26);
+  color-scheme: dark;
+}
+html.sky[data-theme="starmap"] body::before { background: url("sky-starmap.webp?v=1") center top / cover no-repeat, rgb(13,24,26) !important; }
+html.sky[data-theme="starmap"] body :is(.sum-card, .hero2) { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23d6b474' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23d6b474' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%23283e3c' fill-opacity='.85'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%23162627'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box, radial-gradient(70% 70% at 75% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme="verdant"] {
+  --sk-d0: 17,27,32; --sk-d1: 27,45,47; --sk-d2: 40,68,66; --sk-acc: 197,165,114; --sk-hi: 226,206,162; --sk-lo: 122,101,68; --sk-tx: 241,233,219; --sk-mu: 169,176,174;
+  --c-bank: #8197AE; --c-stock: #6FA58C; --c-crypto: rgb(197,165,114); --c-recv: #80647E; --c-debt: #B9776A; --c-liab: #B9776A;
+  --ok: #7FB59B; --danger: #C98577; --faint: rgba(169,176,174,.75); --on-accent: rgb(17,27,32);
+  color-scheme: dark;
+}
+html.sky[data-theme="verdant"] body::before { background: url("sky-verdant.webp?v=1") center top / cover no-repeat, rgb(17,27,32) !important; }
+html.sky[data-theme="verdant"] body :is(.sum-card, .hero2) { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23c5a572' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23c5a572' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%23284442' fill-opacity='.85'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%231b2d2f'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box, radial-gradient(70% 70% at 75% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme="green"] {
+  --sk-d0: 8,27,25; --sk-d1: 17,46,43; --sk-d2: 32,68,61; --sk-acc: 214,183,124; --sk-hi: 240,220,170; --sk-lo: 120,95,55; --sk-tx: 243,233,214; --sk-mu: 183,184,167;
+  --c-bank: #5fb08c; --c-stock: #7fb3c4; --c-crypto: rgb(214,183,124); --c-recv: #a38fb8; --c-debt: #d07a68; --c-liab: #d07a68;
+  --ok: #93d6b1; --danger: #ec9096; --faint: rgba(183,184,167,.75); --on-accent: rgb(8,27,25);
+  color-scheme: dark;
+}
+html.sky[data-theme="green"] body::before { background: url("sky-green.webp?v=1") center top / cover no-repeat, rgb(8,27,25) !important; }
+html.sky[data-theme="green"] body :is(.sum-card, .hero2) { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23d6b77c' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23d6b77c' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%2320443d' fill-opacity='.85'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%23112e2b'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box, radial-gradient(70% 70% at 75% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme="navy"] {
+  --sk-d0: 11,24,42; --sk-d1: 22,43,67; --sk-d2: 38,62,92; --sk-acc: 196,206,220; --sk-hi: 236,240,246; --sk-lo: 108,128,156; --sk-tx: 243,245,246; --sk-mu: 189,199,212;
+  --c-bank: #8fb0d6; --c-stock: #7fc9aa; --c-crypto: rgb(196,206,220); --c-recv: #b7a3d8; --c-debt: #e4939d; --c-liab: #e4939d;
+  --ok: #91d5b9; --danger: #ef93a0; --faint: rgba(189,199,212,.75); --on-accent: rgb(11,24,42);
+  color-scheme: dark;
+}
+html.sky[data-theme="navy"] body::before { background: url("sky-navy.webp?v=1") center top / cover no-repeat, rgb(11,24,42) !important; }
+html.sky[data-theme="navy"] body :is(.sum-card, .hero2) { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23c4cedc' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23c4cedc' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%23263e5c' fill-opacity='.85'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%23162b43'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box, radial-gradient(70% 70% at 75% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme="purple"] {
+  --sk-d0: 34,24,35; --sk-d1: 54,39,57; --sk-d2: 80,58,84; --sk-acc: 224,186,170; --sk-hi: 245,218,206; --sk-lo: 140,98,106; --sk-tx: 248,238,240; --sk-mu: 209,187,201;
+  --c-bank: #8fc4b2; --c-stock: #a8b8ec; --c-crypto: rgb(224,186,170); --c-recv: #d5a9e8; --c-debt: #f293a3; --c-liab: #f293a3;
+  --ok: #a1d8bb; --danger: #f293a3; --faint: rgba(209,187,201,.75); --on-accent: rgb(34,24,35);
+  color-scheme: dark;
+}
+html.sky[data-theme="purple"] body::before { background: url("sky-purple.webp?v=1") center top / cover no-repeat, rgb(34,24,35) !important; }
+html.sky[data-theme="purple"] body :is(.sum-card, .hero2) { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23e0baaa' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23e0baaa' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%23503a54' fill-opacity='.85'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%23362739'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box, radial-gradient(70% 70% at 75% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme="library"] {
+  --sk-d0: 18,12,8; --sk-d1: 32,22,14; --sk-d2: 56,40,25; --sk-acc: 201,164,106; --sk-hi: 232,205,150; --sk-lo: 120,90,50; --sk-tx: 239,227,203; --sk-mu: 181,162,131;
+  --c-bank: #8fb89c; --c-stock: #93abd0; --c-crypto: rgb(201,164,106); --c-recv: #c4a0bb; --c-debt: #d0806f; --c-liab: #d0806f;
+  --ok: #a9c99c; --danger: #e09484; --faint: rgba(181,162,131,.75); --on-accent: rgb(18,12,8);
+  color-scheme: dark;
+}
+html.sky[data-theme="library"] body::before { background: url("sky-library.webp?v=1") center top / cover no-repeat, rgb(18,12,8) !important; }
+html.sky[data-theme="library"] body :is(.sum-card, .hero2) { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23c9a46a' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23c9a46a' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%23382819' fill-opacity='.85'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%2320160e'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box, radial-gradient(70% 70% at 75% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme="ivory"] {
+  --sk-d0: 240,234,222; --sk-d1: 253,250,243; --sk-d2: 232,221,200; --sk-acc: 176,136,74; --sk-hi: 132,95,44; --sk-lo: 205,178,128; --sk-tx: 44,46,42; --sk-mu: 112,106,94;
+  --c-bank: #3c7a63; --c-stock: #3d5a8a; --c-crypto: rgb(176,136,74); --c-recv: #7d5a93; --c-debt: #c4626b; --c-liab: #c4626b;
+  --ok: #3c7a63; --danger: #c4626b; --faint: rgba(112,106,94,.75); --on-accent: rgb(255,252,245);
+  color-scheme: light;
+}
+html.sky[data-theme="ivory"] body::before { background: url("sky-ivory.webp?v=1") center top / cover no-repeat, rgb(240,234,222) !important; }
+html.sky[data-theme="ivory"] body :is(.sum-card, .hero2) { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23b0884a' stop-opacity='.6'/%3E%3Cstop offset='1' stop-color='%23b0884a' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%23e8ddc8' fill-opacity='.85'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%23fdfaf3'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box, radial-gradient(70% 70% at 75% 0%, rgba(var(--sk-acc),.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important; }
+html.sky[data-theme="ivory"] :is(.panel, .fold, .sum-card, .hero2, .dash, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip, .tabs, .cc) { box-shadow: 0 6px 18px rgba(120,90,40,.12) !important; }
+html.sky[data-theme="ivory"] .modal { background: rgba(60,45,20,.35) !important; }
+
+/* 主題卡：每張都是一個小星盤 */
+html.sky .tt { border: 1px solid rgba(var(--sk-acc),.2); }
+html.sky .tt.on { border: 2px solid rgb(var(--sk-acc)); }
+html.sky .tt .tt-img { aspect-ratio: 1.05; }
+html.sky .tt .tt-orb { width: 30%; }
+html.sky .tt-starmap { background: rgb(13,24,26) !important; }
+html.sky .tt-starmap .tt-img { background: conic-gradient(from 0deg, transparent 0 11.5%, rgba(214,180,116,.9) 12% 13%, transparent 13% 24%, rgba(214,180,116,.9) 24.5% 25.5%, transparent 26% 36.5%, rgba(214,180,116,.9) 37% 38%, transparent 38.5% 49%, rgba(214,180,116,.9) 49.5% 50.5%, transparent 51% 61.5%, rgba(214,180,116,.9) 62% 63%, transparent 63.5% 74%, rgba(214,180,116,.9) 74.5% 75.5%, transparent 76% 86.5%, rgba(214,180,116,.9) 87% 88%, transparent 88.5% 99%) center / 74% 74% no-repeat, radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(214,180,116,.85) 24.5% 25.5%, transparent 26% 33%, rgba(214,180,116,.5) 33.5% 34%, transparent 34.5% 36%, rgba(214,180,116,.95) 36.5% 37.5%, transparent 38%), radial-gradient(circle at 50% 45%, rgb(40,62,60), rgb(13,24,26) 75%) !important; box-shadow: none !important; }
+html.sky .tt-starmap .tt-orb { background: radial-gradient(circle at 35% 30%, rgb(255,240,176), rgb(214,180,116) 55%, rgb(117,99,63)) !important; box-shadow: 0 0 0 3px rgb(13,24,26), 0 0 0 4px rgba(214,180,116,.6) !important; }
+html.sky .tt-starmap .tt-name { color: rgb(241,233,215) !important; } html.sky .tt-starmap .tt-name small, html.sky .tt-starmap .tt-desc { color: rgba(214,180,116,.85) !important; }
+html.sky .tt-verdant { background: rgb(17,27,32) !important; }
+html.sky .tt-verdant .tt-img { background: conic-gradient(from 0deg, transparent 0 11.5%, rgba(197,165,114,.9) 12% 13%, transparent 13% 24%, rgba(197,165,114,.9) 24.5% 25.5%, transparent 26% 36.5%, rgba(197,165,114,.9) 37% 38%, transparent 38.5% 49%, rgba(197,165,114,.9) 49.5% 50.5%, transparent 51% 61.5%, rgba(197,165,114,.9) 62% 63%, transparent 63.5% 74%, rgba(197,165,114,.9) 74.5% 75.5%, transparent 76% 86.5%, rgba(197,165,114,.9) 87% 88%, transparent 88.5% 99%) center / 74% 74% no-repeat, radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(197,165,114,.85) 24.5% 25.5%, transparent 26% 33%, rgba(197,165,114,.5) 33.5% 34%, transparent 34.5% 36%, rgba(197,165,114,.95) 36.5% 37.5%, transparent 38%), radial-gradient(circle at 50% 45%, rgb(40,68,66), rgb(17,27,32) 75%) !important; box-shadow: none !important; }
+html.sky .tt-verdant .tt-orb { background: radial-gradient(circle at 35% 30%, rgb(255,225,174), rgb(197,165,114) 55%, rgb(108,90,62)) !important; box-shadow: 0 0 0 3px rgb(17,27,32), 0 0 0 4px rgba(197,165,114,.6) !important; }
+html.sky .tt-verdant .tt-name { color: rgb(241,233,219) !important; } html.sky .tt-verdant .tt-name small, html.sky .tt-verdant .tt-desc { color: rgba(197,165,114,.85) !important; }
+html.sky .tt-green { background: rgb(8,27,25) !important; }
+html.sky .tt-green .tt-img { background: conic-gradient(from 0deg, transparent 0 11.5%, rgba(214,183,124,.9) 12% 13%, transparent 13% 24%, rgba(214,183,124,.9) 24.5% 25.5%, transparent 26% 36.5%, rgba(214,183,124,.9) 37% 38%, transparent 38.5% 49%, rgba(214,183,124,.9) 49.5% 50.5%, transparent 51% 61.5%, rgba(214,183,124,.9) 62% 63%, transparent 63.5% 74%, rgba(214,183,124,.9) 74.5% 75.5%, transparent 76% 86.5%, rgba(214,183,124,.9) 87% 88%, transparent 88.5% 99%) center / 74% 74% no-repeat, radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(214,183,124,.85) 24.5% 25.5%, transparent 26% 33%, rgba(214,183,124,.5) 33.5% 34%, transparent 34.5% 36%, rgba(214,183,124,.95) 36.5% 37.5%, transparent 38%), radial-gradient(circle at 50% 45%, rgb(32,68,61), rgb(8,27,25) 75%) !important; box-shadow: none !important; }
+html.sky .tt-green .tt-orb { background: radial-gradient(circle at 35% 30%, rgb(255,243,184), rgb(214,183,124) 55%, rgb(117,100,68)) !important; box-shadow: 0 0 0 3px rgb(8,27,25), 0 0 0 4px rgba(214,183,124,.6) !important; }
+html.sky .tt-green .tt-name { color: rgb(243,233,214) !important; } html.sky .tt-green .tt-name small, html.sky .tt-green .tt-desc { color: rgba(214,183,124,.85) !important; }
+html.sky .tt-navy { background: rgb(11,24,42) !important; }
+html.sky .tt-navy .tt-img { background: conic-gradient(from 0deg, transparent 0 11.5%, rgba(196,206,220,.9) 12% 13%, transparent 13% 24%, rgba(196,206,220,.9) 24.5% 25.5%, transparent 26% 36.5%, rgba(196,206,220,.9) 37% 38%, transparent 38.5% 49%, rgba(196,206,220,.9) 49.5% 50.5%, transparent 51% 61.5%, rgba(196,206,220,.9) 62% 63%, transparent 63.5% 74%, rgba(196,206,220,.9) 74.5% 75.5%, transparent 76% 86.5%, rgba(196,206,220,.9) 87% 88%, transparent 88.5% 99%) center / 74% 74% no-repeat, radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(196,206,220,.85) 24.5% 25.5%, transparent 26% 33%, rgba(196,206,220,.5) 33.5% 34%, transparent 34.5% 36%, rgba(196,206,220,.95) 36.5% 37.5%, transparent 38%), radial-gradient(circle at 50% 45%, rgb(38,62,92), rgb(11,24,42) 75%) !important; box-shadow: none !important; }
+html.sky .tt-navy .tt-orb { background: radial-gradient(circle at 35% 30%, rgb(255,255,255), rgb(196,206,220) 55%, rgb(107,113,121)) !important; box-shadow: 0 0 0 3px rgb(11,24,42), 0 0 0 4px rgba(196,206,220,.6) !important; }
+html.sky .tt-navy .tt-name { color: rgb(243,245,246) !important; } html.sky .tt-navy .tt-name small, html.sky .tt-navy .tt-desc { color: rgba(196,206,220,.85) !important; }
+html.sky .tt-purple { background: rgb(34,24,35) !important; }
+html.sky .tt-purple .tt-img { background: conic-gradient(from 0deg, transparent 0 11.5%, rgba(224,186,170,.9) 12% 13%, transparent 13% 24%, rgba(224,186,170,.9) 24.5% 25.5%, transparent 26% 36.5%, rgba(224,186,170,.9) 37% 38%, transparent 38.5% 49%, rgba(224,186,170,.9) 49.5% 50.5%, transparent 51% 61.5%, rgba(224,186,170,.9) 62% 63%, transparent 63.5% 74%, rgba(224,186,170,.9) 74.5% 75.5%, transparent 76% 86.5%, rgba(224,186,170,.9) 87% 88%, transparent 88.5% 99%) center / 74% 74% no-repeat, radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(224,186,170,.85) 24.5% 25.5%, transparent 26% 33%, rgba(224,186,170,.5) 33.5% 34%, transparent 34.5% 36%, rgba(224,186,170,.95) 36.5% 37.5%, transparent 38%), radial-gradient(circle at 50% 45%, rgb(80,58,84), rgb(34,24,35) 75%) !important; box-shadow: none !important; }
+html.sky .tt-purple .tt-orb { background: radial-gradient(circle at 35% 30%, rgb(255,246,230), rgb(224,186,170) 55%, rgb(123,102,93)) !important; box-shadow: 0 0 0 3px rgb(34,24,35), 0 0 0 4px rgba(224,186,170,.6) !important; }
+html.sky .tt-purple .tt-name { color: rgb(248,238,240) !important; } html.sky .tt-purple .tt-name small, html.sky .tt-purple .tt-desc { color: rgba(224,186,170,.85) !important; }
+html.sky .tt-library { background: rgb(18,12,8) !important; }
+html.sky .tt-library .tt-img { background: conic-gradient(from 0deg, transparent 0 11.5%, rgba(201,164,106,.9) 12% 13%, transparent 13% 24%, rgba(201,164,106,.9) 24.5% 25.5%, transparent 26% 36.5%, rgba(201,164,106,.9) 37% 38%, transparent 38.5% 49%, rgba(201,164,106,.9) 49.5% 50.5%, transparent 51% 61.5%, rgba(201,164,106,.9) 62% 63%, transparent 63.5% 74%, rgba(201,164,106,.9) 74.5% 75.5%, transparent 76% 86.5%, rgba(201,164,106,.9) 87% 88%, transparent 88.5% 99%) center / 74% 74% no-repeat, radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(201,164,106,.85) 24.5% 25.5%, transparent 26% 33%, rgba(201,164,106,.5) 33.5% 34%, transparent 34.5% 36%, rgba(201,164,106,.95) 36.5% 37.5%, transparent 38%), radial-gradient(circle at 50% 45%, rgb(56,40,25), rgb(18,12,8) 75%) !important; box-shadow: none !important; }
+html.sky .tt-library .tt-orb { background: radial-gradient(circle at 35% 30%, rgb(255,224,166), rgb(201,164,106) 55%, rgb(110,90,58)) !important; box-shadow: 0 0 0 3px rgb(18,12,8), 0 0 0 4px rgba(201,164,106,.6) !important; }
+html.sky .tt-library .tt-name { color: rgb(239,227,203) !important; } html.sky .tt-library .tt-name small, html.sky .tt-library .tt-desc { color: rgba(201,164,106,.85) !important; }
+html.sky .tt-ivory { background: rgb(240,234,222) !important; }
+html.sky .tt-ivory .tt-img { background: conic-gradient(from 0deg, transparent 0 11.5%, rgba(176,136,74,.9) 12% 13%, transparent 13% 24%, rgba(176,136,74,.9) 24.5% 25.5%, transparent 26% 36.5%, rgba(176,136,74,.9) 37% 38%, transparent 38.5% 49%, rgba(176,136,74,.9) 49.5% 50.5%, transparent 51% 61.5%, rgba(176,136,74,.9) 62% 63%, transparent 63.5% 74%, rgba(176,136,74,.9) 74.5% 75.5%, transparent 76% 86.5%, rgba(176,136,74,.9) 87% 88%, transparent 88.5% 99%) center / 74% 74% no-repeat, radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(176,136,74,.85) 24.5% 25.5%, transparent 26% 33%, rgba(176,136,74,.5) 33.5% 34%, transparent 34.5% 36%, rgba(176,136,74,.95) 36.5% 37.5%, transparent 38%), radial-gradient(circle at 50% 45%, rgb(232,221,200), rgb(240,234,222) 75%) !important; box-shadow: none !important; }
+html.sky .tt-ivory .tt-orb { background: radial-gradient(circle at 35% 30%, rgb(236,196,134), rgb(176,136,74) 55%, rgb(96,74,40)) !important; box-shadow: 0 0 0 3px rgb(240,234,222), 0 0 0 4px rgba(176,136,74,.6) !important; }
+html.sky .tt-ivory .tt-name { color: rgb(44,46,42) !important; } html.sky .tt-ivory .tt-name small, html.sky .tt-ivory .tt-desc { color: rgba(176,136,74,.85) !important; }
