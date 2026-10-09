@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10e';
+const APP_VERSION = '2026.10.10i';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -2487,3 +2487,40 @@ async function boot() {
 window.addEventListener('hashchange', handleHash);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#app').hidden) { loadAll().then(runInstallments).then(runSettlements).then(() => refreshAll(false)).catch(() => { }); } });
 boot();
+
+/* ================================================================
+ * 永夜圖書館主題：頁首小標、閱覽證、預設套用
+ * ================================================================ */
+THEME_INFO.library = ['永夜圖書館', 'LIBRARY', '燭光暗木・古金典藏'];
+THEMES.unshift(['library', '永夜圖書館', ['#0e0a07', '#c9a46a', '#efe3cb']]);
+try { if (!localStorage.getItem('ac_lib_v1')) { localStorage.setItem('ac_lib_v1', '1'); applyTheme('library'); } } catch (_) { }
+const LIB_HEAD = {
+  overview: ['01', 'Overview · Compass Hall', '資產總覽'],
+  bank: ['02', 'Accounts · Treasury', '帳戶'],
+  cards: ['03', 'Cards · Ledger Room', '信用卡'],
+  invest: ['04', 'Investments · Three Worlds', '投資'],
+  settings: ['05', 'Settings · Archive', '設定'],
+};
+function libHead(tab) {
+  const h = LIB_HEAD[tab]; if (!h) return '';
+  if (tab === 'cards' && S.cardOpen) return '';
+  return `<header class="lib-head"><span class="eb">${h[0]} / ${h[1]}</span><span class="ttl">${h[2]}</span><span class="lib-rule">✦</span></header>`;
+}
+function libEmblem() {
+  let t = '';
+  for (let i = 0; i < 32; i++) { const a = i * 11.25 * Math.PI / 180, r0 = i % 4 ? 31 : 28; t += `<line x1="${(37 + r0 * Math.sin(a)).toFixed(1)}" y1="${(37 - r0 * Math.cos(a)).toFixed(1)}" x2="${(37 + 33 * Math.sin(a)).toFixed(1)}" y2="${(37 - 33 * Math.cos(a)).toFixed(1)}"/>`; }
+  return `<svg viewBox="0 0 74 74" aria-hidden="true" fill="none" stroke="#c9a46a" stroke-width=".8">
+    <circle cx="37" cy="37" r="35"/><circle cx="37" cy="37" r="26" stroke-opacity=".5"/>${t}
+    <path d="M37 9 41 33 65 37 41 41 37 65 33 41 9 37 33 33Z" fill="#c9a46a" fill-opacity=".9" stroke="none"/>
+    <path d="M37 9 39 35 37 37ZM65 37 39 39 37 37ZM37 65 35 39 37 37ZM9 37 35 35 37 37Z" fill="#5a3d1c" stroke="none" opacity=".55"/>
+    <path d="M37 19 39.5 34.5 55 37 39.5 39.5 37 55 34.5 39.5 19 37 34.5 34.5Z" transform="rotate(45 37 37)" fill="#8a6d43" stroke="none" opacity=".8"/>
+    <circle cx="37" cy="37" r="3" fill="#1a120a" stroke="#e3c58e"/></svg>`;
+}
+const _settingsView = VIEWS.settings;
+VIEWS.settings = () => _settingsView() + `<section class="lib-card">${libEmblem()}<div><span class="eb">READER ACCESS</span><span class="t">妳的閱覽證</span><span class="sig">Rysena Veylorn</span><span class="h">@auccelis</span></div></section>`;
+const _render0 = render;
+render = function () {
+  _render0();
+  const v = $('#view');
+  if (v && !v.querySelector(':scope > .lib-head')) v.insertAdjacentHTML('afterbegin', libHead(S.tab));
+};

@@ -785,3 +785,272 @@ body::before { display: none; }
 [data-theme="green"] { --night: #14231e; --panel: #203630; --panel-2: #29443c; --line: #3c5c51; --line-soft: #31504a; --muted: #b3c3b9; --text: #f3f4ee; }
 [data-theme="navy"] { --night: #131d2c; --panel: #1f2d42; --panel-2: #283a54; --line: #3b5070; --line-soft: #31455f; --muted: #b2bdcf; --text: #f2f4f8; }
 [data-theme="purple"] { --night: #1f1727; --panel: #30243a; --panel-2: #3c2e48; --line: #574667; --line-soft: #4a3a59; --muted: #c4b6cd; --text: #f6f0f5; }
+
+/* ================================================================
+ * 永夜圖書館 THE ETERNAL LIBRARY：燭光暗木、古金細框、皮革書封
+ * ================================================================ */
+[data-theme="library"] {
+  --night: #0e0a07; --night-2: #15100b; --panel: #18110c; --panel-2: #21180f; --line: #4a3822; --line-soft: #2f2316;
+  --gold: #c9a46a; --gold-soft: #8a6d43; --accent-text: #e3c58e; --on-accent: #1a120a; --needle: #d8b679;
+  --fab-hi: #b0463c; --fab: #7a2420; --fab-lo: #3f0f0c; --fab-star: #e8c98a;
+  --text: #efe3cb; --muted: #b5a283; --faint: #7f6d52; --danger: #e09484; --ok: #a9c99c;
+  --c-bank: #8fb89c; --c-stock: #93abd0; --c-crypto: #d9b46a; --c-recv: #c4a0bb; --c-debt: #d0806f; --c-liab: #b86b5f;
+  --card-1: #2a1a10; --card-2: #120b07; --card-text: #f1e2c4; --card-sub: #c9b28a; --chip-1: #d9bb7f; --chip-2: #8a6a37;
+  --glow: #1d140c; --star: #c9a46a; --shadow: 0,0,0; --mtn1: #3a2a19; --mtn2: #2a1e12; --mtn3: #1a120b;
+  --serif-tc: "Noto Serif TC", "Songti TC", serif;
+  --frame: rgba(201,164,106,.38); --frame-hi: rgba(222,190,130,.85);
+  /* 四角 L 形金括號（內縮 5px） */
+  --brk:
+    linear-gradient(var(--frame-hi),var(--frame-hi)) left 5px top 5px / 14px 1px no-repeat,
+    linear-gradient(var(--frame-hi),var(--frame-hi)) left 5px top 5px / 1px 14px no-repeat,
+    linear-gradient(var(--frame-hi),var(--frame-hi)) right 5px top 5px / 14px 1px no-repeat,
+    linear-gradient(var(--frame-hi),var(--frame-hi)) right 5px top 5px / 1px 14px no-repeat,
+    linear-gradient(var(--frame-hi),var(--frame-hi)) left 5px bottom 5px / 14px 1px no-repeat,
+    linear-gradient(var(--frame-hi),var(--frame-hi)) left 5px bottom 5px / 1px 14px no-repeat,
+    linear-gradient(var(--frame-hi),var(--frame-hi)) right 5px bottom 5px / 14px 1px no-repeat,
+    linear-gradient(var(--frame-hi),var(--frame-hi)) right 5px bottom 5px / 1px 14px no-repeat;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  color-scheme: dark;
+}
+/* 背景：暗木書架＋兩盞燭光（只在邊緣，不蓋住內容） */
+html[data-theme="library"] body {
+  background:
+    radial-gradient(38% 26% at 8% 6%, rgba(214,150,70,.16), transparent 70%),
+    radial-gradient(32% 22% at 96% 14%, rgba(214,150,70,.10), transparent 70%),
+    linear-gradient(180deg, rgba(0,0,0,0) 0, rgba(0,0,0,.55) 100%),
+    repeating-linear-gradient(90deg, #120c08 0 22px, #17100a 22px 23px, #100a06 23px 41px, #1a120b 41px 42px, #0f0a06 42px 63px, #150e09 63px 64px),
+    #0e0a07 !important;
+  background-attachment: fixed !important;
+}
+html[data-theme="library"] body::before {
+  display: block; opacity: 1; background: var(--grain); background-size: 160px; mix-blend-mode: overlay; opacity: .5;
+}
+/* 內容區加一層暗幕，書架只在兩側透出 */
+[data-theme="library"] #view { position: relative; }
+[data-theme="library"] .top { background: linear-gradient(#0e0a07, rgba(14,10,7,.92)); border-bottom: 1px solid var(--line-soft); }
+[data-theme="library"] .brand { color: var(--accent-text); }
+[data-theme="library"] .brand .bt small { color: var(--gold-soft); letter-spacing: .38em; }
+[data-theme="library"] .brand .mark { stroke: var(--gold); }
+
+/* 面板：古金細框＋四角括號，方角 */
+[data-theme="library"] :is(.panel, .fold, .sum-card, .hero2, .dash, .trend-card) {
+  border: 1px solid var(--frame) !important; border-radius: 3px !important;
+  background: var(--brk), linear-gradient(180deg, #1b130d, #140e09) !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.6) !important;
+}
+[data-theme="library"] .info-grid div { background: var(--brk), linear-gradient(180deg, #1b130d, #140e09) !important; border: 1px solid var(--frame) !important; border-radius: 3px !important; --frame-hi: rgba(222,190,130,.5); }
+[data-theme="library"] :is(.tile, .crow, .inv-row, .list-card) {
+  border-radius: 3px !important; background: linear-gradient(180deg, #1b130d, #140e09) !important; border: 1px solid var(--line) !important;
+}
+[data-theme="library"] .crow { border-left: 2px solid var(--cc) !important; }
+[data-theme="library"] :is(.crow, .inv-row, .tile):hover { border-color: var(--frame-hi) !important; }
+[data-theme="library"] .row { border-color: var(--line-soft); }
+
+/* 區塊標題：✦ ＋ 字距放寬 ＋ 漸淡細線 */
+[data-theme="library"] h2 { font-family: var(--serif-tc); font-weight: 600; color: var(--accent-text); letter-spacing: .22em; font-size: 15px; }
+[data-theme="library"] h2::before { content: "✦"; width: auto; height: auto; background: none; transform: none; color: var(--gold); font-size: 11px; margin-right: 2px; }
+[data-theme="library"] h2::after { content: ""; flex: 1; height: 1px; min-width: 20px; background: linear-gradient(90deg, var(--frame), transparent); }
+[data-theme="library"] h2:has(.btn)::after { order: 0; }
+[data-theme="library"] h2 .btn { order: 1; }
+[data-theme="library"] :is(.fold-t, .lbl, .crow-name, .cn-t, .seg-ctl button) { font-family: var(--serif-tc); letter-spacing: .12em; }
+[data-theme="library"] .fold-t { color: var(--accent-text); }
+[data-theme="library"] .dash-head .lbl { letter-spacing: .5em; color: var(--muted); }
+[data-theme="library"] .dash-num, [data-theme="library"] .sum-card > b { color: #f3e6c8; text-shadow: 0 0 18px rgba(214,170,100,.18); }
+
+/* 頁首小標：01 / OVERVIEW ＋ 中文大標 */
+.lib-head { display: none; }
+[data-theme="library"] .lib-head { display: block; text-align: center; margin: 6px 0 14px; }
+.lib-head .eb { display: block; font-family: "Cormorant Garamond", var(--serif); font-size: 11px; letter-spacing: .42em; color: var(--gold); text-transform: uppercase; }
+.lib-head .ttl { display: block; font-family: var(--serif-tc); font-weight: 700; font-size: 24px; letter-spacing: .32em; color: var(--text); margin: 2px 0 6px; padding-left: .32em; }
+.lib-rule { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--gold); font-size: 10px; }
+.lib-rule::before, .lib-rule::after { content: ""; width: 72px; height: 1px; background: linear-gradient(90deg, transparent, var(--frame-hi)); }
+.lib-rule::after { transform: scaleX(-1); }
+
+/* 羅盤：金色徽章 */
+[data-theme="library"] .compass2 .cbase { fill: #120c08; stroke: var(--gold); }
+[data-theme="library"] .compass2 .rc { fill: #1a120a; }
+[data-theme="library"] .cn-ic { background: radial-gradient(circle at 35% 30%, #2a1d12, #110b07) !important; border: 1px solid var(--frame-hi); box-shadow: 0 4px 14px rgba(0,0,0,.6), inset 0 0 0 3px #110b07, inset 0 0 0 4px rgba(201,164,106,.35); }
+[data-theme="library"] .cnode.nw .cn-ic { color: var(--c-bank); } [data-theme="library"] .cnode.ne .cn-ic { color: var(--c-stock); }
+[data-theme="library"] .cnode.sw .cn-ic { color: var(--c-debt); } [data-theme="library"] .cnode.se .cn-ic { color: var(--c-recv); }
+[data-theme="library"] .scenery { display: none; }
+[data-theme="library"] .explore { margin-top: 8px; border-radius: 2px; border: 1px solid var(--frame-hi); background: rgba(14,10,7,.85); letter-spacing: .32em; padding: 11px 28px; }
+[data-theme="library"] .explore::after { content: " ✦"; color: var(--gold); }
+
+/* 信用卡：燙金皮革書封 */
+[data-theme="library"] .cc {
+  border-radius: 6px; border: 1px solid rgba(0,0,0,.7);
+  background:
+    var(--grain),
+    radial-gradient(110% 90% at 28% 18%, color-mix(in srgb, var(--cc) 58%, #3a2414), transparent 70%),
+    linear-gradient(160deg, color-mix(in srgb, var(--cc) 42%, #24160c), color-mix(in srgb, var(--cc) 18%, #0a0604));
+  background-size: 160px, auto, auto;
+  box-shadow: 0 16px 34px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,230,180,.12), inset 0 0 40px rgba(0,0,0,.55);
+  outline: 1px solid rgba(214,180,115,.7); outline-offset: -9px;
+}
+[data-theme="library"] .cc::after {
+  content: ""; position: absolute; inset: 13px; pointer-events: none; border: 1px solid rgba(214,180,115,.3); border-radius: 2px;
+  background:
+    radial-gradient(circle at 0 0, transparent 7px, rgba(214,180,115,.75) 7.5px 8.5px, transparent 9px) top left / 18px 18px no-repeat,
+    radial-gradient(circle at 100% 0, transparent 7px, rgba(214,180,115,.75) 7.5px 8.5px, transparent 9px) top right / 18px 18px no-repeat,
+    radial-gradient(circle at 0 100%, transparent 7px, rgba(214,180,115,.75) 7.5px 8.5px, transparent 9px) bottom left / 18px 18px no-repeat,
+    radial-gradient(circle at 100% 100%, transparent 7px, rgba(214,180,115,.75) 7.5px 8.5px, transparent 9px) bottom right / 18px 18px no-repeat;
+}
+[data-theme="library"] .cc { padding: 24px 26px; }
+[data-theme="library"] .cc-sky { opacity: .35; }
+[data-theme="library"] .cc-sky polyline, [data-theme="library"] .cc-sky circle { stroke: #e2c48a; fill: #e2c48a; }
+[data-theme="library"] .cc-name { color: #ecd3a0; letter-spacing: .16em; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
+[data-theme="library"] .cc-mid b { color: #f6e7c6; text-shadow: 0 1px 0 rgba(0,0,0,.7), 0 0 14px rgba(230,190,120,.2); }
+[data-theme="library"] .cc-bot { color: #d2bb92; }
+[data-theme="library"] .crow-ic { border-radius: 3px; background: #120c08; border: 1px solid var(--line); }
+[data-theme="library"] .date-glyph { border-radius: 3px; }
+
+/* 分段、膠囊、按鈕：方角金框 */
+[data-theme="library"] .seg-ctl { border-radius: 3px; background: #120c08; border-color: var(--frame); }
+[data-theme="library"] .seg-ctl button { border-radius: 2px; }
+[data-theme="library"] .seg-ctl button.on { background: linear-gradient(#2a1d11, #1c130b); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--frame); }
+[data-theme="library"] .pills button, [data-theme="library"] .rchips button { border-radius: 2px; background: #140e09; border-color: var(--line); letter-spacing: .08em; }
+[data-theme="library"] .pills button.on, [data-theme="library"] .rchips button.on { background: linear-gradient(#d9b979, #a8834a); color: #1a120a; border-color: transparent; }
+[data-theme="library"] .btn { border-radius: 3px; letter-spacing: .08em; }
+[data-theme="library"] .btn.primary { background: linear-gradient(#d9b979, #a8834a); color: #1a120a; border-color: #e3c58e; box-shadow: 0 4px 14px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,240,200,.5); }
+[data-theme="library"] .btn.outline, [data-theme="library"] .btn.ghost { border-color: var(--frame); }
+[data-theme="library"] .qa button .i { background: radial-gradient(circle at 35% 30%, #2a1d12, #110b07); border-color: var(--frame-hi); box-shadow: inset 0 0 0 3px #110b07, inset 0 0 0 4px rgba(201,164,106,.3); }
+[data-theme="library"] .rew-strip { border-radius: 3px; border: 1px solid var(--frame); background: linear-gradient(90deg, #2a1d11, #17100a) !important; }
+
+/* 輸入框與表單抽屜：羊皮紙金框 */
+[data-theme="library"] :is(input, select, textarea) { background: #0f0a07; border-color: var(--line); border-radius: 3px; color: var(--text); }
+[data-theme="library"] .modal { background: rgba(0,0,0,.66); }
+[data-theme="library"] .sheet { background: var(--brk), linear-gradient(#1c140d, #120c08) !important; border: 1px solid var(--frame); border-bottom: 0; border-radius: 6px 6px 0 0 !important; box-shadow: 0 -16px 40px rgba(0,0,0,.6); }
+[data-theme="library"] .sheet h3 { color: var(--accent-text); letter-spacing: .2em; }
+[data-theme="library"] .fab-grid button { border-radius: 3px; background: linear-gradient(#1c140d, #140e09); border-color: var(--line); }
+
+/* 底部導覽：暗木條＋紅蠟封印 */
+[data-theme="library"] .tabs { background: linear-gradient(#1a120b, #0f0a06) !important; border: 1px solid var(--frame) !important; border-radius: 4px !important; box-shadow: 0 12px 34px rgba(0,0,0,.7), inset 0 1px 0 rgba(230,190,120,.12) !important; }
+[data-theme="library"] .tabs button.on { color: var(--accent-text); }
+[data-theme="library"] .tabs .fab {
+  border-radius: 50% !important; border: 0 !important;
+  background: radial-gradient(circle at 38% 32%, #c25a4c 0, #8c2a24 38%, #5a1612 75%, #3a0d0a 100%) !important;
+  box-shadow: 0 8px 18px rgba(0,0,0,.6), inset 0 0 0 4px rgba(90,20,16,.9), inset 0 0 0 5px rgba(232,201,138,.55), inset 0 -3px 6px rgba(0,0,0,.5) !important;
+}
+[data-theme="library"] .tabs .fab svg { fill: #ecd09a; filter: drop-shadow(0 1px 0 rgba(0,0,0,.6)); }
+
+/* 閱覽證（設定頁底部） */
+.lib-card { display: none; }
+[data-theme="library"] .lib-card { display: grid; grid-template-columns: 74px 1fr; gap: 16px; align-items: center; margin-top: 28px; padding: 22px 20px;
+  border: 1px solid var(--frame); border-radius: 3px; background: var(--brk), linear-gradient(160deg, #22170e, #110b07); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.lib-card svg { width: 74px; height: 74px; }
+.lib-card .eb { display: block; font-family: "Cormorant Garamond", var(--serif); font-size: 10.5px; letter-spacing: .4em; color: var(--gold); }
+.lib-card .t { display: block; font-family: var(--serif-tc); font-weight: 600; letter-spacing: .2em; color: var(--text); font-size: 15px; margin: 2px 0 4px; }
+.lib-card .sig { display: block; font-family: "Pinyon Script", cursive; font-size: 30px; line-height: 1.1; color: #e3c58e; }
+.lib-card .h { display: block; font-size: 12px; color: var(--muted); letter-spacing: .1em; }
+
+/* 主題卡：圖書館 */
+.theme-tiles { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)) !important; }
+.tt-library { background: #18110c; }
+.tt-library .tt-img { background: repeating-linear-gradient(90deg, #1a120b 0 9px, #2a1a10 9px 10px, #140d08 10px 17px, #3a2414 17px 18px), #120c08; box-shadow: inset 0 -18px 30px rgba(0,0,0,.6); }
+.tt-library .tt-orb { background: radial-gradient(circle at 38% 32%, #c25a4c, #5a1612 75%); box-shadow: 0 6px 14px rgba(0,0,0,.5), inset 0 0 0 3px #5a1612, inset 0 0 0 4px #e8c98a99; }
+.tt-library .tt-name { color: #efe3cb; } .tt-library .tt-name small, .tt-library .tt-desc { color: #b5a283; }
+
+[data-theme="library"] .cc-sky { display: none; }
+[data-theme="library"] .compass2 .rs1.a { fill: #d9b979; } [data-theme="library"] .compass2 .rs1.b { fill: #8a6a3a; }
+[data-theme="library"] .compass2 .rs2.a { fill: #b8955c; opacity: .9; } [data-theme="library"] .compass2 .rs2.b { fill: #5e4526; opacity: .9; }
+[data-theme="library"] .compass2 .rs1, [data-theme="library"] .compass2 .rs2 { stroke: #3a2812; }
+[data-theme="library"] .compass2 .cr { opacity: .82; }
+[data-theme="library"] .inv-ic { background: radial-gradient(circle at 35% 30%, #2a1d12, #110b07) !important; border: 1px solid var(--frame-hi); box-shadow: inset 0 0 0 3px #110b07, inset 0 0 0 4px rgba(201,164,106,.35); }
+[data-theme="library"] .inv-ic.stocks { color: var(--c-stock); } [data-theme="library"] .inv-ic.crypto { color: var(--c-crypto); }
+.inv-row .grow { flex: 1; min-width: 0; }
+
+/* --- 圖書館背景照：模糊書架＋燭光散景 --- */
+html[data-theme="library"] body { background: #120c08 !important; }
+html[data-theme="library"] body::before {
+  display: block; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 1; mix-blend-mode: normal;
+  background: var(--grain), url("lib-hall-blur.webp") center top / cover no-repeat, #120c08;
+  background-size: 160px, cover, auto;
+}
+[data-theme="library"] { --panel: rgba(22,15,10,.74); --panel-2: rgba(34,24,15,.8); }
+[data-theme="library"] :is(.panel, .fold, .sum-card, .hero2, .dash, .trend-card) {
+  background: var(--brk), linear-gradient(180deg, rgba(28,19,12,.72), rgba(18,12,8,.82)) !important;
+}
+[data-theme="library"] .dash { background: var(--brk), linear-gradient(180deg, rgba(24,16,10,.55), rgba(16,11,7,.78)) !important; }
+[data-theme="library"] :is(.tile, .crow, .inv-row, .list-card) { background: linear-gradient(180deg, rgba(28,19,12,.76), rgba(18,12,8,.84)) !important; }
+[data-theme="library"] .info-grid div { background: var(--brk), rgba(20,14,9,.78) !important; }
+[data-theme="library"] .top { background: linear-gradient(rgba(14,10,7,.9), rgba(14,10,7,.55)); border-bottom-color: rgba(201,164,106,.18); }
+[data-theme="library"] .lib-head { margin: 22px 0 22px; text-align: left; padding: 0 4px; }
+[data-theme="library"] .lib-head .eb { font-size: 10.5px; letter-spacing: .38em; color: #a9926c; }
+[data-theme="library"] .lib-head .ttl { font-size: 34px; letter-spacing: .14em; padding-left: 0; margin: 8px 0 12px; color: #f4ead6; text-shadow: 0 2px 18px rgba(0,0,0,.6); }
+[data-theme="library"] .lib-rule { justify-content: flex-start; }
+[data-theme="library"] .lib-rule::before { width: 0; }
+[data-theme="library"] .lib-rule::after { width: 120px; transform: none; background: linear-gradient(90deg, var(--frame-hi), transparent); }
+html[data-theme="library"] body::before { background: url("lib-hall-blur.webp") center top / cover no-repeat, #120c08; }
+[data-theme="library"] .dash { background: var(--brk), linear-gradient(180deg, rgba(22,15,10,.42), rgba(14,10,7,.7)) !important; }
+[data-theme="library"] .compass2 .cbase { fill: rgba(14,10,7,.82); }
+
+/* --- 背景改用永夜圖書館網站原圖 --- */
+html[data-theme="library"] body { background: #0d0908 !important; }
+html[data-theme="library"] body::before {
+  background: linear-gradient(#0d0909b8, #120b0ceb), url("lib-hall-blur.webp") center / cover no-repeat, #0d0908 !important;
+}
+[data-theme="library"] #app::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 640px; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(13,9,8,.18) 0%, rgba(13,9,8,.55) 42%, rgba(13,9,8,.92) 78%, #0d090800 100%),
+    url("lib-hall-top.webp") center top / cover no-repeat;
+  -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent);
+}
+[data-theme="library"] .top { background: linear-gradient(rgba(13,9,8,.82), rgba(13,9,8,.35)); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+[data-theme="library"] .lib-head .ttl { font-weight: 600; }
+[data-theme="library"] #app::before {
+  height: 560px;
+  background: linear-gradient(180deg, rgba(13,9,8,.05) 0%, rgba(13,9,8,.28) 45%, rgba(13,9,8,.8) 82%, #0d0908 100%),
+    url("lib-hall-top.webp") 78% top / auto 560px no-repeat;
+  -webkit-mask-image: none; mask-image: none;
+}
+[data-theme="library"] #app::before {
+  height: 470px;
+  background: linear-gradient(180deg, rgba(13,9,8,.1) 0%, rgba(13,9,8,.15) 55%, rgba(13,9,8,.75) 86%, #0d0908 100%),
+    linear-gradient(90deg, rgba(13,9,8,.7) 0%, rgba(13,9,8,.25) 45%, transparent 70%),
+    url("lib-hall-top.webp") right -40px top 40px / auto 440px no-repeat;
+}
+[data-theme="library"] #app::before {
+  height: 330px;
+  background: linear-gradient(180deg, rgba(13,9,8,.05) 0%, rgba(13,9,8,.1) 55%, rgba(13,9,8,.8) 88%, #0d0908 100%),
+    linear-gradient(90deg, rgba(13,9,8,.55) 0%, rgba(13,9,8,.15) 50%, transparent 75%),
+    url("lib-hall-top.webp") right top 50px / auto 280px no-repeat, #0d0908;
+}
+[data-theme="library"] #app::before {
+  height: 300px;
+  background: linear-gradient(90deg, rgba(13,9,8,.55) 0%, rgba(13,9,8,.12) 50%, transparent 75%),
+    url("lib-hall-top.webp") right top 40px / auto 250px no-repeat;
+  -webkit-mask-image: linear-gradient(#000 0, #000 62%, transparent 100%); mask-image: linear-gradient(#000 0, #000 62%, transparent 100%);
+}
+
+/* --- 精簡框線：只有主卡（淨值／總覽數字）保留金框＋四角，其他改成細分隔線 --- */
+[data-theme="library"] :is(.panel, .fold, .trend-card) {
+  background: linear-gradient(180deg, rgba(24,16,11,.62), rgba(16,11,8,.72)) !important;
+  border: 0 !important; border-top: 1px solid rgba(201,164,106,.22) !important; border-radius: 2px !important; box-shadow: none !important;
+}
+[data-theme="library"] :is(.dash, .sum-card, .hero2) { box-shadow: 0 10px 30px rgba(0,0,0,.35) !important; }
+/* 卡片列表、投資列、磚塊：不加框，只有底線 */
+[data-theme="library"] :is(.crow, .inv-row, .tile, .list-card) {
+  background: transparent !important; border: 0 !important; border-bottom: 1px solid rgba(201,164,106,.16) !important; border-radius: 0 !important; box-shadow: none !important;
+}
+[data-theme="library"] .crow { border-left: 0 !important; padding-left: 4px; }
+[data-theme="library"] .crows, [data-theme="library"] .inv-rows { gap: 0; background: linear-gradient(180deg, rgba(24,16,11,.55), rgba(16,11,8,.65)); border-top: 1px solid rgba(201,164,106,.22); padding: 0 12px; }
+[data-theme="library"] .crow-ic { border: 0; background: none; }
+[data-theme="library"] .inv-row.on { box-shadow: none !important; }
+[data-theme="library"] .inv-row.on .grow b { color: var(--accent-text); }
+/* 卡片資訊格：無框，用中線分隔 */
+[data-theme="library"] .info-grid { gap: 0 !important; border-top: 1px solid rgba(201,164,106,.22); border-bottom: 1px solid rgba(201,164,106,.22); background: rgba(16,11,8,.5); }
+[data-theme="library"] .info-grid div { background: none !important; border: 0 !important; border-radius: 0 !important; }
+[data-theme="library"] .info-grid div:nth-child(odd) { border-right: 1px solid rgba(201,164,106,.14) !important; }
+[data-theme="library"] .info-grid div:nth-child(n+3) { border-top: 1px solid rgba(201,164,106,.14) !important; }
+/* 篩選膠囊、區間、分段：只有選中的有底色或底線 */
+[data-theme="library"] .pills button, [data-theme="library"] .rchips button { border-color: transparent !important; background: none !important; }
+[data-theme="library"] .pills button.on, [data-theme="library"] .rchips button.on { background: none !important; color: var(--accent-text) !important; box-shadow: inset 0 -1px 0 var(--gold); }
+[data-theme="library"] .seg-ctl { border: 0; border-bottom: 1px solid rgba(201,164,106,.22); background: none; padding: 0; }
+[data-theme="library"] .seg-ctl button.on { background: none; box-shadow: inset 0 -2px 0 var(--gold); }
+/* 其他小框 */
+[data-theme="library"] .btn.outline, [data-theme="library"] .btn.ghost { border-color: rgba(201,164,106,.28); }
+[data-theme="library"] .rew-strip { border: 0 !important; border-top: 1px solid rgba(201,164,106,.22) !important; background: linear-gradient(90deg, rgba(42,29,17,.75), rgba(23,16,10,.5)) !important; }
+[data-theme="library"] .explore { border-color: rgba(201,164,106,.5); }
+[data-theme="library"] .fab-grid button { border: 0; border-top: 1px solid rgba(201,164,106,.2); background: rgba(28,20,13,.7); }
+[data-theme="library"] .tabs { border: 0 !important; border-top: 1px solid rgba(201,164,106,.3) !important; }
+[data-theme="library"] .lib-card { border: 0; border-top: 1px solid rgba(201,164,106,.22); }
