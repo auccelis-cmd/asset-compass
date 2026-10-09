@@ -1756,3 +1756,49 @@ html.sky .tt-ivory { background: rgb(240,234,222) !important; }
 html.sky .tt-ivory .tt-img { background: conic-gradient(from 0deg, transparent 0 11.5%, rgba(176,136,74,.9) 12% 13%, transparent 13% 24%, rgba(176,136,74,.9) 24.5% 25.5%, transparent 26% 36.5%, rgba(176,136,74,.9) 37% 38%, transparent 38.5% 49%, rgba(176,136,74,.9) 49.5% 50.5%, transparent 51% 61.5%, rgba(176,136,74,.9) 62% 63%, transparent 63.5% 74%, rgba(176,136,74,.9) 74.5% 75.5%, transparent 76% 86.5%, rgba(176,136,74,.9) 87% 88%, transparent 88.5% 99%) center / 74% 74% no-repeat, radial-gradient(circle at 50% 50%, transparent 0 24%, rgba(176,136,74,.85) 24.5% 25.5%, transparent 26% 33%, rgba(176,136,74,.5) 33.5% 34%, transparent 34.5% 36%, rgba(176,136,74,.95) 36.5% 37.5%, transparent 38%), radial-gradient(circle at 50% 45%, rgb(232,221,200), rgb(240,234,222) 75%) !important; box-shadow: none !important; }
 html.sky .tt-ivory .tt-orb { background: radial-gradient(circle at 35% 30%, rgb(236,196,134), rgb(176,136,74) 55%, rgb(96,74,40)) !important; box-shadow: 0 0 0 3px rgb(240,234,222), 0 0 0 4px rgba(176,136,74,.6) !important; }
 html.sky .tt-ivory .tt-name { color: rgb(44,46,42) !important; } html.sky .tt-ivory .tt-name small, html.sky .tt-ivory .tt-desc { color: rgba(176,136,74,.85) !important; }
+
+/* ===== 星象 v5：設計稿總覽 ===== */
+html.sky .dial-box { width: min(100%, 340px) !important; margin: 64px auto 50px !important; }
+.vdial.v5 .v5r { fill: none; stroke-width: 11; stroke-linecap: butt; opacity: .95; }
+.vdial.v5 .v5r.debt { stroke: var(--c-debt); stroke-width: 3; }
+.vdial.v5 .v5stars circle { fill: rgb(var(--sk-hi)); opacity: .6; }
+.vdial.v5 .v5stem { fill: none; stroke: rgba(var(--sk-acc),.7); stroke-width: 1; }
+.vdial.v5 .v5leaf { fill: rgba(var(--sk-d1),.9); stroke: rgba(var(--sk-acc),.85); stroke-width: .8; }
+.vdial.v5 .v5moon { fill: rgb(var(--sk-hi)); opacity: .9; filter: drop-shadow(0 0 4px rgba(var(--sk-hi),.5)); }
+.vdial.v5 .v5spark { fill: rgb(var(--sk-hi)); opacity: .85; }
+.vdial.v5 .v5cl { fill: rgb(var(--sk-hi)); font-family: var(--num); font-size: 12px; font-weight: 700; text-anchor: middle; }
+/* 大圓節點：圖示、名稱、百分比都在圓內 */
+html.sky[data-theme] .dial-box .cnode {
+  width: 24% !important; aspect-ratio: 1; height: auto; padding: 0; border-radius: 50%; transform: translate(-50%, -50%) !important;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  background: radial-gradient(circle at 40% 28%, color-mix(in srgb, var(--nc) 55%, rgb(var(--sk-d1))), color-mix(in srgb, var(--nc) 22%, rgb(var(--sk-d0))) 62%, rgb(var(--sk-d0))) !important;
+  border: 2px solid rgb(var(--sk-acc)) !important;
+  box-shadow: 0 0 0 3px rgba(var(--sk-d0),.85), 0 0 0 4px rgba(var(--sk-acc),.45), 0 0 18px rgba(var(--sk-acc),.25), 0 8px 18px rgba(0,0,0,.45);
+}
+html.sky[data-theme] .dial-box .cnode.nw { --nc: var(--c-bank); left: 50% !important; top: 9% !important; }
+html.sky[data-theme] .dial-box .cnode.ne { --nc: var(--c-stock); left: 9% !important; top: 50% !important; }
+html.sky[data-theme] .dial-box .cnode.sw { --nc: var(--c-debt); left: 91% !important; top: 50% !important; }
+html.sky[data-theme] .dial-box .cnode.se { --nc: var(--c-recv); left: 50% !important; top: 91% !important; }
+html.sky[data-theme] .dial-box .cn-ic { width: auto !important; height: auto !important; background: none !important; border: 0 !important; box-shadow: none !important; color: rgb(var(--sk-hi)) !important; }
+html.sky[data-theme] .dial-box .cn-ic .i { width: 20px; height: 20px; }
+html.sky[data-theme] .dial-box .cnode .cn-t, html.sky[data-theme] .dial-box .cnode .cn-p { background: none !important; padding: 0; margin: 0; text-shadow: 0 1px 3px rgba(0,0,0,.6); line-height: 1.25; }
+html.sky[data-theme] .dial-box .cnode .cn-t { font-size: 12.5px; color: rgb(var(--sk-tx)); margin-top: 1px; white-space: nowrap; }
+html.sky[data-theme] .dial-box .cnode .cn-p { font-size: 11.5px; color: rgb(var(--sk-tx)); font-weight: 700; }
+html.sky[data-theme] .dial-box .cnode.sw .cn-p { color: color-mix(in srgb, var(--c-debt) 60%, white); }
+html.sky[data-theme="ivory"] .dial-box .cnode .cn-t, html.sky[data-theme="ivory"] .dial-box .cnode .cn-p, html.sky[data-theme="ivory"] .dial-box .cn-ic { color: #fffaf0 !important; }
+html.sky[data-theme="ivory"] .dial-box .cnode { background: radial-gradient(circle at 40% 28%, color-mix(in srgb, var(--nc) 70%, #fff), var(--nc) 60%, color-mix(in srgb, var(--nc) 70%, #000)) !important; }
+html.sky .vcenter { width: 46%; }
+html.sky .vc-n { font-size: clamp(17px, 5.6vw, 23px); }
+/* 月份走勢圖 */
+html.sky .ver-trend .tp-head { margin-bottom: 4px; }
+html.sky .ver-trend .vt-r .meta { color: rgb(var(--sk-mu)); font-size: 12.5px; }
+.v5chg { font-weight: 700; font-size: 14px; } .v5chg.pos { color: var(--ok); } .v5chg.neg { color: var(--danger); }
+.v5chart { display: block; width: 100%; height: 130px; overflow: visible; }
+.v5chart .v5grid { stroke: rgba(var(--sk-acc),.14); stroke-width: .6; }
+.v5chart .v5yl { fill: rgb(var(--sk-mu)); font-size: 7px; text-anchor: end; font-family: var(--num); }
+.v5chart .v5ml { fill: rgb(var(--sk-mu)); font-size: 9px; text-anchor: middle; font-family: var(--sans); }
+.v5chart .v5line { fill: none; stroke: rgb(var(--sk-hi)); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.v5chart .v5dot { fill: rgb(var(--sk-d0)); stroke: rgb(var(--sk-hi)); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.v5note { text-align: center; margin: 4px 0 0; font-size: 12px; }
+/* 底部導覽：目前頁面的圖示填色 */
+html.sky .tabs button.on svg { fill: rgba(var(--sk-acc),.35); }

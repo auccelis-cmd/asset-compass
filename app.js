@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10p';
+const APP_VERSION = '2026.10.10q';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -2655,3 +2655,92 @@ THEMES.unshift(['starmap', '星圖秘境', ['#0d181a', '#d9b878', '#f1ece0']]);
 try { if (!localStorage.getItem('ac_star_v1')) { localStorage.setItem('ac_star_v1', '1'); applyTheme('starmap'); } } catch (_) { }
 
 try { document.documentElement.classList.add('sky'); } catch (_) { }
+
+/* ================================================================
+ * 星象 v5：設計稿總覽（大圓節點、四向金針、新月與葉枝、月份走勢）
+ * ================================================================ */
+const _dialV4 = compassDial;
+compassDial = function (t) {
+  const P = (r, a) => [r * Math.cos(a * DEG), r * Math.sin(a * DEG)], f = n => n.toFixed(1);
+  const C = k => `rgb(var(--sk-${k}))`, A = (k, a) => `rgba(var(--sk-${k}),${a})`;
+  let ticks = '';
+  for (let i = 0; i < 120; i++) { const a = i * 3, M = i % 10 === 0; const [x0, y0] = P(M ? 152 : 156, a), [x1, y1] = P(160, a); ticks += `<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" style="stroke:${A('acc', M ? .8 : .4)};stroke-width:${M ? 1.4 : .7}"/>`; }
+  const segs = [[t.bankOnly, 'var(--c-bank)'], [t.invest, 'var(--c-stock)'], [t.other, 'var(--c-recv)']].filter(x => x[0] > 0);
+  const tot = sum(segs, x => x[0]) || 1;
+  let a0 = -90, ring = '';
+  for (const [v, c] of segs) { const sw = v / tot * 360; ring += sw >= 359.5 ? `<circle r="116" class="v5r" style="stroke:${c}"/>` : `<path d="${arcPath(116, a0 + 2, a0 + sw - 2)}" class="v5r" style="stroke:${c}"/>`; a0 += sw; }
+  const dsw = t.gross > 0 ? Math.min(359, (t.debt + t.liab) / t.gross * 360) : 0;
+  const debt = dsw > .5 ? `<path d="${arcPath(104, -90, -90 + dsw)}" class="v5r debt"/>` : '';
+  // 葉枝：沿外圈左下、右上各一串
+  const leaf = (x, y, L, ang) => { const w = L * .36; return `<path transform="translate(${f(x)} ${f(y)}) rotate(${f(ang)})" d="M0 0 Q${f(L * .5)} ${f(-w)} ${f(L)} 0 Q${f(L * .5)} ${f(w)} 0 0Z M0 0 L${f(L * .92)} 0" class="v5leaf"/>`; };
+  let leaves = '';
+  for (const [from, to, side] of [[200, 248, 1], [20, 68, -1], [110, 140, 1], [290, 320, -1]]) {
+    let path = '';
+    for (let a = from; a <= to; a += 2) { const [x, y] = P(172, a); path += (path ? ' L' : 'M') + f(x) + ' ' + f(y); }
+    leaves += `<path d="${path}" class="v5stem"/>`;
+    for (let a = from + 4, i = 0; a <= to; a += 7, i++) { const [x, y] = P(172, a); leaves += leaf(x, y, 15 + (i % 3) * 3, a + 90 + (i % 2 ? 50 : -50) * side); }
+  }
+  const moon = (x, y, r, rot) => `<path transform="translate(${x} ${y}) rotate(${rot})" d="M0 ${-r} A${r} ${r} 0 1 0 0 ${r} A${r * .78} ${r * .78} 0 1 1 0 ${-r}Z" class="v5moon"/>`;
+  let stars = '';
+  const rnd = (sd => () => (sd = (sd * 9301 + 49297) % 233280) / 233280)(3);
+  for (let i = 0; i < 34; i++) { const a = rnd() * 360, r = 92 + rnd() * 75, [x, y] = P(r, a); stars += `<circle cx="${f(x)}" cy="${f(y)}" r="${(rnd() * 1.2 + .3).toFixed(2)}"/>`; }
+  const spark = (x, y, s) => `<path transform="translate(${x} ${y}) scale(${s})" d="M0 -10 L2 -2 L10 0 L2 2 L0 10 L-2 2 L-10 0 L-2 -2Z" class="v5spark"/>`;
+  const spike = (rot, r0, r1, w) => `<path transform="rotate(${rot})" d="M0 ${-r1} L${w} ${-(r0 + r1) / 2} L0 ${-r0} L${-w} ${-(r0 + r1) / 2}Z" fill="url(#v5n)"/>`;
+  let rose = '';
+  for (const r of [45, 135, 225, 315]) rose += spike(r, 0, 70, 6);
+  return `<svg class="vdial v5" viewBox="-170 -170 340 340" role="img" aria-label="資產羅盤：環是資產比例，內側紅線是負債">
+    <defs>
+      <linearGradient id="v5g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:${C('hi')}"/><stop offset=".3" style="stop-color:${C('lo')}"/><stop offset=".55" style="stop-color:${C('hi')}"/><stop offset=".8" style="stop-color:${C('lo')}"/><stop offset="1" style="stop-color:${C('acc')}"/></linearGradient>
+      <linearGradient id="v5n" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:${C('hi')}"/><stop offset=".5" style="stop-color:${C('acc')}"/><stop offset=".5" style="stop-color:${C('lo')}"/><stop offset="1" style="stop-color:${C('lo')}"/></linearGradient>
+      <radialGradient id="v5f" cx="50%" cy="45%" r="60%"><stop offset="0" style="stop-color:${C('d2')}"/><stop offset="1" style="stop-color:${C('d0')}"/></radialGradient>
+      <radialGradient id="v5c" cx="50%" cy="35%" r="70%"><stop offset="0" style="stop-color:${C('d1')}"/><stop offset="1" style="stop-color:${C('d0')}"/></radialGradient>
+    </defs>
+    <circle r="168" style="fill:${A('d0', .35)};stroke:${A('acc', .35)};stroke-width:.8"/>
+    <g class="v5stars">${stars}</g>
+    ${leaves}
+    <circle r="160" fill="url(#v5f)" style="fill-opacity:.92;stroke:url(#v5g);stroke-width:2.2"/>
+    ${ticks}
+    <circle r="148" style="fill:none;stroke:${A('acc', .45)};stroke-width:.8"/>
+    <circle r="130" style="fill:none;stroke:url(#v5g);stroke-width:1.6"/>
+    <circle r="116" style="fill:none;stroke:${A('d0', .65)};stroke-width:16"/>${ring}${debt}
+    <circle r="102" style="fill:none;stroke:url(#v5g);stroke-width:1.2"/>
+    ${moon(122, -118, 12, 30)}
+    ${spark(-96, -96, .7)}${spark(110, 90, .55)}${spark(-130, 10, .4)}
+    <g opacity=".55">${rose}</g>
+    <circle r="86" fill="url(#v5c)" style="stroke:url(#v5g);stroke-width:2.4"/>
+    <circle r="80" style="fill:none;stroke:${A('acc', .4)};stroke-width:.7"/>
+    ${spike(0, 86, 128, 6)}${spike(90, 86, 128, 6)}${spike(180, 86, 128, 6)}${spike(270, 86, 128, 6)}
+    ${spike(0, 158, 200, 6)}${spike(180, 158, 196, 5)}
+    <path d="M0 -222 L3.5 -210 L15 -206 L3.5 -202 L0 -190 L-3.5 -202 L-15 -206 L-3.5 -210Z" style="fill:${C('hi')}"/>
+    <text y="-174" class="v5cl">N</text><text y="182" class="v5cl">S</text>
+  </svg>`;
+};
+/* 節點文字：銀行存款 */
+const _ovView5 = VIEWS.overview;
+VIEWS.overview = () => _ovView5().replace('<span class="cn-t">銀行</span>', '<span class="cn-t">銀行存款</span>');
+/* 資產走勢：近 6 個月，月份刻度 */
+verTrend = function () {
+  const t = splitTotals(), now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ y: d.getFullYear(), m: d.getMonth(), v: null }); }
+  const snaps = S.snapshots.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  for (const s of snaps) { const d = parseYmd(s.date); const mm = months.find(x => x.y === d.getFullYear() && x.m === d.getMonth()); if (mm) mm.v = num(s.net); }
+  months[5].v = t.net;
+  const pts = months.filter(x => x.v != null);
+  const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
+  const W = 320, H = 120, L = 26, R = 10, T = 12, B = 22;
+  const vals = pts.map(p => p.v), lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || Math.max(1, Math.abs(hi) * .1);
+  const X = i => L + (W - L - R) * i / 5, Y = v => T + (H - T - B) * (1 - (v - lo) / span);
+  const idx = months.map((x, i) => x.v != null ? i : -1).filter(i => i >= 0);
+  const line = idx.map((i, k) => `${k ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(months[i].v).toFixed(1)}`).join(' ');
+  const area = idx.length > 1 ? `${line} L${X(idx[idx.length - 1]).toFixed(1)} ${H - B} L${X(idx[0]).toFixed(1)} ${H - B}Z` : '';
+  const grid = [0, 1, 2, 3].map(k => { const y = T + (H - T - B) * k / 3; return `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="v5grid"/><text x="${L - 5}" y="${y + 3}" class="v5yl">${S.hide ? '' : fmtShort(hi - span * k / 3)}</text>`; }).join('');
+  const labels = months.map((x, i) => `<text x="${X(i).toFixed(1)}" y="${H - 6}" class="v5ml">${x.m + 1}月</text>`).join('');
+  const dots = idx.map(i => `<circle cx="${X(i).toFixed(1)}" cy="${Y(months[i].v).toFixed(1)}" r="3" class="v5dot"/>`).join('');
+  return `<section class="panel ver-trend"><div class="tp-head"><h4>資產走勢</h4><span class="vt-r"><span class="meta">近 6 個月</span><span class="v5chg ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${Math.abs(chg).toFixed(2)}%</span></span></div>
+    <svg class="v5chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="近 6 個月淨資產走勢">
+      <defs><linearGradient id="v5a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:rgba(var(--sk-acc),.45)"/><stop offset="1" style="stop-color:rgba(var(--sk-acc),0)"/></linearGradient></defs>
+      ${grid}${area ? `<path d="${area}" fill="url(#v5a)"/>` : ''}<path d="${line}" class="v5line"/>${dots}${labels}</svg>
+    ${idx.length < 2 ? '<p class="meta v5note">每天開 App 會自動記一筆，下個月起就會連成走勢線</p>' : ''}</section>`;
+};
+function fmtShort(v) { const a = Math.abs(v); return (v < 0 ? '-' : '') + (a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? Math.round(a / 1e3) + 'K' : Math.round(a)); }
