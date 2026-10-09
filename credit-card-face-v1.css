@@ -1,0 +1,38 @@
+/* Credit card face redesign — scoped to detail view only. */
+.cd-face .cc:not(.cc-add) {
+  --face-metal: #dec29a;
+  --face-ink: #f9f1df;
+  isolation: isolate;
+  min-height: 205px;
+  aspect-ratio: 1.66;
+  padding: 19px 21px 17px;
+  border: 1px solid color-mix(in srgb, var(--face-metal) 72%, transparent);
+  border-radius: 20px;
+  color: var(--face-ink);
+  background: radial-gradient(ellipse at 77% 4%, color-mix(in srgb, var(--cc) 23%, transparent), transparent 65%), linear-gradient(135deg,#182e35,#0a1b24 70%,#102831);
+  box-shadow: 0 16px 35px rgba(0,0,0,.22), inset 0 1px rgba(255,255,255,.22), inset 0 0 0 3px rgba(11,19,23,.42);
+}
+.cd-face .cc:not(.cc-add)::before {
+  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background: linear-gradient(180deg,transparent 26%,rgba(7,15,20,.12) 55%,rgba(5,11,15,.66) 100%), url('card-mountains.svg') center bottom / cover no-repeat;
+  opacity:.86;
+}
+.cd-face .cc:not(.cc-add)::after {
+  content:""; position:absolute; inset:7px; border:1px solid rgba(226,199,153,.18); border-radius:14px; pointer-events:none;
+}
+.cd-face .cc .cc-sky { opacity:.4; }
+.cd-face .cc .cc-top, .cd-face .cc .cc-mid, .cd-face .cc .cc-bot, .cd-face .cc .cc-num { z-index:1; }
+.cd-face .cc .cc-top { align-items:center; }
+.cd-face .cc .cc-name { font-size:clamp(14px,4vw,17px); color:var(--face-ink); text-shadow:0 1px 4px #071018; }
+.cd-face .cc .cc-chip { filter:drop-shadow(0 0 5px rgba(227,195,138,.24)); }
+.cd-face .cc .cc-chip rect { fill:rgba(200,159,98,.2); stroke:var(--face-metal); }
+.cd-face .cc .cc-chip path { stroke:var(--face-metal); }
+.cd-face .cc .cc-num { color:#e4cda8; font-size:12px; letter-spacing:.16em; }
+.cd-face .cc .cc-mid b { color:#fff6e7; font-size:clamp(27px,7.4vw,36px); text-shadow:0 2px 10px rgba(0,0,0,.45); }
+.cd-face .cc .cc-rew { color:#f2d6a4; background:rgba(7,18,24,.56); border:1px solid rgba(222,194,154,.25); }
+.cd-face .cc .cc-bot { color:#efe1c9; font-size:11px; text-shadow:0 1px 5px #09131a; }
+[data-theme="ivory"] .cd-face .cc:not(.cc-add) { --face-metal:#b08a52; --face-ink:#fff8eb; background:linear-gradient(130deg,#77614b,#283e42 62%,#1a3038); }
+[data-theme="green"] .cd-face .cc:not(.cc-add) { --face-metal:#d6b77c; background:radial-gradient(at 90% 5%,#28544b,#092822 65%,#071d1b); }
+[data-theme="navy"] .cd-face .cc:not(.cc-add) { --face-metal:#d4dbe8; background:radial-gradient(at 90% 5%,#294767,#0c223c 65%,#07182b); }
+[data-theme="purple"] .cd-face .cc:not(.cc-add) { --face-metal:#e3b6ac; background:radial-gradient(at 90% 5%,#5b3c58,#2b1b32 65%,#211625); }
+@media(max-width:360px){.cd-face .cc:not(.cc-add){padding:16px;min-height:184px}.cd-face .cc .cc-bot{font-size:10px}}
