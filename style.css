@@ -9,7 +9,7 @@
   --fab-hi: #f5d58e; --fab: #dca444; --fab-lo: #b97e22; --fab-star: #ffffff;
   --text: #2c2a35; --muted: #77727f; --faint: #a9a4ae;
   --danger: #d4503f; --ok: #239060;
-  --c-bank: #2fb0a0; --c-stock: #5a7cf0; --c-crypto: #f0a93a; --c-debt: #ec6a5c;
+  --c-bank: #2fb0a0; --c-stock: #5a7cf0; --c-crypto: #f0a93a; --c-recv: #a07ad6; --c-liab: #b5544c; --c-debt: #ec6a5c;
   --card-1: #fffdf8; --card-2: #f7ead2; --card-text: #2c2a35; --card-sub: #8f8270;
   --chip-1: #f2d699; --chip-2: #c99a45;
   --glow: #fffaf0; --star: #e2b866;
@@ -25,7 +25,7 @@
   --fab-hi: #8fb1f2; --fab: #4f7fd6; --fab-lo: #3561b3; --fab-star: #ffffff;
   --text: #222838; --muted: #6a7286; --faint: #a3a9b8;
   --danger: #d9534a; --ok: #1f9468;
-  --c-bank: #27b0a3; --c-stock: #4f7fd6; --c-crypto: #eaa53b; --c-debt: #e86a5e;
+  --c-bank: #27b0a3; --c-stock: #4f7fd6; --c-crypto: #eaa53b; --c-recv: #9a74d0; --c-liab: #b8524a; --c-debt: #e86a5e;
   --card-1: #ffffff; --card-2: #e2eaf8; --card-text: #222838; --card-sub: #7684a0;
   --chip-1: #f0d394; --chip-2: #c9a04c;
   --glow: #ffffff; --star: #9fb7e6;
@@ -41,7 +41,7 @@
   --fab-hi: #eab089; --fab: #cc7f42; --fab-lo: #a35d28; --fab-star: #fffaf3;
   --text: #3a2b21; --muted: #86705f; --faint: #b29f8f;
   --danger: #cf4f3c; --ok: #3a8f5e;
-  --c-bank: #4fa88c; --c-stock: #6b80d8; --c-crypto: #e0a03c; --c-debt: #d9604c;
+  --c-bank: #4fa88c; --c-stock: #6b80d8; --c-crypto: #e0a03c; --c-recv: #9d79c9; --c-liab: #b0503f; --c-debt: #d9604c;
   --card-1: #fffaf2; --card-2: #f0dcc2; --card-text: #3a2b21; --card-sub: #937b67;
   --chip-1: #efcf98; --chip-2: #c19050;
   --glow: #fbf6ee; --star: #d7a77c;
@@ -57,7 +57,7 @@
   --fab-hi: #3ea37d; --fab: #1f7a5a; --fab-lo: #135741; --fab-star: #f6d98f;
   --text: #1f2a25; --muted: #66746c; --faint: #a1aca5;
   --danger: #d0503f; --ok: #1f8a5c;
-  --c-bank: #22a08a; --c-stock: #5a78d8; --c-crypto: #e0a23a; --c-debt: #e2675a;
+  --c-bank: #22a08a; --c-stock: #5a78d8; --c-crypto: #e0a23a; --c-recv: #8f72c9; --c-liab: #b5544c; --c-debt: #e2675a;
   --card-1: #ffffff; --card-2: #e0eee5; --card-text: #1f2a25; --card-sub: #6d8577;
   --chip-1: #f2d694; --chip-2: #c49a42;
   --glow: #ffffff; --star: #d4b26a;
@@ -177,6 +177,7 @@ h2 .btn { margin-left: auto; }
 .compass .c-stock { stroke: var(--c-stock); }
 .compass .c-crypto { stroke: var(--c-crypto); }
 .compass .c-debt { stroke: var(--c-debt); }
+.compass .c-recv { stroke: var(--c-recv); }
 .compass .needle-head { fill: var(--needle); }
 .compass .needle-tail { stroke: var(--needle); stroke-width: 1; }
 .compass .card-star { stroke: var(--panel); stroke-width: 1.2; }
@@ -184,15 +185,16 @@ h2 .btn { margin-left: auto; }
 .compass .c-label { fill: var(--muted); font-family: var(--serif-tc); font-size: 13px; letter-spacing: .3em; text-anchor: middle; }
 .compass .c-value { fill: var(--text); font-family: var(--serif); font-weight: 600; text-anchor: middle; font-variant-numeric: lining-nums tabular-nums; }
 .compass .c-sub { fill: var(--faint); font-size: 11.5px; text-anchor: middle; letter-spacing: .1em; }
-.dial-legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0 0; text-align: left; }
+.dial-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; margin: 6px 0 0; text-align: left; }
 .dial-legend div { padding: 8px 10px; border-left: 1px solid var(--line); }
 .dial-legend div:first-child { border-left: 0; }
 .dial-legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
 .dial-legend i.c-bank { background: var(--c-bank); } .dial-legend i.c-stock { background: var(--c-stock); }
 .dial-legend i.c-crypto { background: var(--c-crypto); } .dial-legend i.c-debt { background: var(--c-debt); }
+.dial-legend i.c-recv { background: var(--c-recv); } .dial-legend i.c-liab { background: var(--c-liab); }
 .dial-legend span { font-size: 12px; color: var(--muted); }
 .dial-legend b { display: block; font-family: var(--serif); font-size: 17px; font-weight: 600; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 400px) { .dial-legend { grid-template-columns: 1fr 1fr; } .dial-legend div:nth-child(3) { border-left: 0; } }
+@media (max-width: 400px) { .dial-legend { grid-template-columns: 1fr 1fr; } .dial-legend div:nth-child(odd) { border-left: 0; } }
 .trend { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
 .trend svg { flex: 1; height: 28px; }
 .trend polyline { fill: none; stroke: var(--gold); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
@@ -394,3 +396,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--gold); }
 .rank.top { background: var(--gold); color: var(--on-accent); }
 .fab-grid .wide { grid-column: 1 / -1; background: color-mix(in srgb, var(--gold) 10%, var(--panel-2)); }
 @media (prefers-reduced-motion: reduce) { .tgl i { transition: none; } }
+
+/* 資產分配 */
+.alloc { display: flex; gap: 3px; height: 92px; border-radius: 14px; overflow: hidden; }
+.alloc div { min-width: 46px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; background: var(--c); color: #fff; }
+.alloc b { font-family: var(--serif); font-size: 24px; font-weight: 600; line-height: 1; }
+.alloc span { font-size: 12px; opacity: .92; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.debt-line { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; font-size: 13px; color: var(--muted); }
+.debt-line .meter { flex: 1; margin: 0; height: 6px; }
+.debt-line b { font-family: var(--serif); font-size: 18px; color: var(--text); }

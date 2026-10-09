@@ -7,10 +7,11 @@ const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
 
-const TABLES = ['accounts', 'balance_log', 'cards', 'transactions', 'settlements', 'stocks', 'crypto_holdings', 'wallets', 'snapshots'];
+const TABLES = ['accounts', 'balance_log', 'cards', 'transactions', 'settlements', 'stocks', 'crypto_holdings', 'wallets', 'snapshots', 'receivables', 'liabilities'];
+const OPTIONAL_TABLES = ['receivables', 'liabilities']; // 後來新增的表：還沒建立時不讓整個 App 壞掉
 const S = {
   accounts: [], balance_log: [], cards: [], transactions: [], settlements: [],
-  stocks: [], crypto_holdings: [], wallets: [], snapshots: [],
+  stocks: [], crypto_holdings: [], wallets: [], snapshots: [], receivables: [], liabilities: [], missingTables: [],
   quotes: {}, prices: {}, fx: { TWD: 1 }, walletBal: {},
   tab: ({ stocks: 'invest', crypto: 'invest' })[localStorage.getItem('ac_tab')] || localStorage.getItem('ac_tab') || 'overview',
   invSub: localStorage.getItem('ac_inv') || 'stocks', cardSel: 0,
@@ -63,7 +64,12 @@ const DB = {
   async list(t) {
     if (!CLOUD) return local.load()[t] || [];
     const { data, error } = await sb.from(t).select('*');
-    if (error) throw error; return data;
+    if (error) {
+      if (OPTIONAL_TABLES.includes(t)) { if (!S.missingTables.includes(t)) S.missingTables.push(t); return []; }
+      throw error;
+    }
+    S.missingTables = S.missingTables.filter(x => x !== t);
+    return data;
   },
   async insert(t, row) {
     row = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...row };
@@ -287,16 +293,27 @@ async function loadWallets(force) {
 }
 
 /* ---------------- totals ---------------- */
+/* 同一代號的多筆買進合併成一列：股數相加，成本用加權平均（賣出的負股數不影響均價） */
 function stockRows() {
-  return S.stocks.map(s => {
-    const q = S.quotes[String(s.code).toUpperCase()];
+  const groups = {};
+  for (const s of S.stocks) {
+    const code = String(s.code).trim().toUpperCase();
+    (groups[code] ||= []).push(s);
+  }
+  return Object.entries(groups).map(([code, lots]) => {
+    const q = S.quotes[code];
     const price = q?.price ?? null;
-    const shares = num(s.shares), cost = num(s.avg_cost);
-    const value = price != null ? price * shares : cost * shares;
+    const shares = sum(lots, l => num(l.shares));
+    const buys = lots.filter(l => num(l.shares) > 0 && l.avg_cost != null && l.avg_cost !== '');
+    const buyShares = sum(buys, l => num(l.shares));
+    const cost = buyShares ? sum(buys, l => num(l.shares) * num(l.avg_cost)) / buyShares : 0;
+    const costTotal = cost * shares;
+    const value = price != null ? price * shares : costTotal;
     const pl = price != null && cost ? (price - cost) * shares : null;
     const day = q?.prev ? (price - q.prev) / q.prev * 100 : null;
-    return { ...s, q, price, value, pl, plPct: cost && price != null ? (price - cost) / cost * 100 : null, day, name: s.name || q?.name || '' };
-  });
+    lots.sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)));
+    return { code, lots, q, price, shares, avg_cost: cost, costTotal, value, pl, plPct: cost && price != null ? (price - cost) / cost * 100 : null, day, name: lots.find(l => l.name)?.name || q?.name || '' };
+  }).filter(r => r.shares !== 0 || r.lots.length).sort((a, b) => b.value - a.value);
 }
 function cryptoRows() {
   const map = {};
@@ -316,11 +333,13 @@ function totals() {
   const stock = sum(stockRows(), r => r.value || 0);
   const crypto = sum(cryptoRows(), r => r.value || 0);
   const debt = sum(S.transactions.filter(t => !t.settled_cycle), t => num(t.amount_twd));
-  return { bank, stock, crypto, debt, net: bank + stock + crypto - debt };
+  const recv = sum(S.receivables.filter(r => !r.received_at), r => num(r.amount));
+  const liab = sum(S.liabilities, l => Math.max(0, num(l.balance)));
+  return { bank, stock, crypto, recv, debt, liab, net: bank + stock + crypto + recv - debt - liab };
 }
 async function saveSnapshot() {
   const t = totals(); const date = todayStr();
-  const row = { date, net: Math.round(t.net), bank: Math.round(t.bank), stock: Math.round(t.stock), crypto: Math.round(t.crypto), debt: Math.round(t.debt) };
+  const row = { date, net: Math.round(t.net), bank: Math.round(t.bank), stock: Math.round(t.stock), crypto: Math.round(t.crypto), debt: Math.round(t.debt + t.liab) };
   const ex = S.snapshots.find(s => String(s.date).slice(0, 10) === date);
   try {
     if (ex) await upd('snapshots', ex.id, row); else await add('snapshots', row);
@@ -356,7 +375,7 @@ const ruleId = () => 'r' + Math.random().toString(36).slice(2, 8);
 const pct = v => (Math.round(v * 100) / 100) + '%';
 
 function ruleMatches(r, t) {
-  if (r.on === false) return false;
+  if (r.on === false || t.source === 'installment') return false; // 分期不享回饋
   if (!(WHERE[r.where || 'all'] || WHERE.all)[1](t)) return false;
   if (!(PAYS[r.pay || 'any'] || PAYS.any)[1](txnPay(t))) return false;
   if (r.min && Math.abs(num(t.amount_twd)) < r.min) return false;
@@ -559,6 +578,149 @@ function openRecommend() {
   draw();
 }
 
+/* ---------------- 應收款與分期／負債 ---------------- */
+function addMonths(dateStr, n, day) { const d = parseYmd(dateStr); return mkDay(d.getFullYear(), d.getMonth() + n, day || d.getDate()); }
+let installing = false;
+async function runInstallments() {
+  if (installing || !S.liabilities.length) return; installing = true;
+  const done = [];
+  try {
+    const today = todayStr();
+    for (const L of S.liabilities) {
+      let next = L.next_date && String(L.next_date).slice(0, 10), left = +L.periods_left || 0, bal = num(L.balance);
+      const amt = num(L.monthly), day = next ? parseYmd(next).getDate() : 0;
+      if (!next || !amt || left <= 0) continue;
+      let changed = false, guard = 0;
+      while (next <= today && left > 0 && guard++ < 60) {
+        const pay = Math.min(amt, bal > 0 ? bal : amt);
+        const k = (+L.periods_total || 0) ? (+L.periods_total - left + 1) : null;
+        const label = `${L.name}${k ? ` 第 ${k}/${L.periods_total} 期` : ' 分期'}`;
+        if (L.card_id) {
+          const card = S.cards.find(c => c.id === L.card_id);
+          const at = parseYmd(next); at.setHours(12);
+          const row = { card_id: L.card_id, merchant: label, amount: pay, currency: 'TWD', amount_twd: pay, pay: 'card', source: 'installment', txn_at: at.toISOString(), card_label: card?.name || '' };
+          if (card?.last_settled && next <= String(card.last_settled).slice(0, 10)) row.settled_cycle = 'past';
+          await add('transactions', row);
+        } else if (L.account_id) {
+          const acc = S.accounts.find(a => a.id === L.account_id);
+          if (acc) {
+            const after = Math.round((num(acc.balance) - fromTWD(pay, acc.currency)) * 100) / 100;
+            await upd('accounts', acc.id, { balance: after });
+            await add('balance_log', { account_id: acc.id, delta: -fromTWD(pay, acc.currency), balance_after: after, note: label });
+          }
+        }
+        bal = Math.max(0, Math.round((bal - pay) * 100) / 100); left--; changed = true;
+        done.push(label);
+        next = ymd(addMonths(next, 1, day));
+      }
+      if (changed) await upd('liabilities', L.id, { balance: bal, periods_left: left, next_date: next });
+    }
+  } finally { installing = false; }
+  if (done.length) toast('分期已入帳：' + done.join('、'), 5000);
+}
+
+function recvSection() {
+  const open = S.receivables.filter(r => !r.received_at).sort((a, b) => String(a.due_date || '9').localeCompare(String(b.due_date || '9')));
+  const doneList = S.receivables.filter(r => r.received_at).sort((a, b) => String(b.received_at).localeCompare(String(a.received_at))).slice(0, 5);
+  const row = r => `<div class="row click" data-act="edit-recv" data-id="${r.id}">
+      <div class="grow"><div class="title">${esc(r.name)}</div><div class="meta">${r.received_at ? `${new Date(r.received_at).toLocaleDateString('zh-TW')} 已收到` : r.due_date ? `預計 ${md(r.due_date)} 收到${daysUntil(parseYmd(r.due_date)) < 0 ? '・<span class="warn">已過期</span>' : ''}` : '未定收款日'}${r.note ? '・' + esc(r.note) : ''}</div></div>
+      <div class="right"><div class="amt${r.received_at ? ' soft' : ''}">${money(num(r.amount))}</div>${r.received_at ? '' : `<button class="btn small" data-act="got-recv" data-id="${r.id}" style="margin-top:4px">已收到</button>`}</div></div>`;
+  return `<h2>應收款 <button class="btn small" data-act="add-recv">＋ 新增</button></h2>
+    <section class="panel">${open.map(row).join('') || '<div class="empty">別人欠你、還沒入帳的錢記在這裡</div>'}
+    ${doneList.length ? `<div class="meta" style="margin:12px 0 2px">最近收到</div>${doneList.map(row).join('')}` : ''}</section>`;
+}
+function liabSection() {
+  const rows = S.liabilities.slice().sort((a, b) => num(b.balance) - num(a.balance)).map(L => {
+    const card = S.cards.find(c => c.id === L.card_id), acc = S.accounts.find(a => a.id === L.account_id);
+    const total = +L.periods_total || 0, left = +L.periods_left || 0;
+    const prog = total ? (total - left) / total * 100 : null;
+    const how = card ? `掛在 ${esc(card.name)}` : acc ? `從 ${esc(acc.name)} 扣` : '手動';
+    return `<div class="row click" data-act="edit-liab" data-id="${L.id}">
+      <div class="grow"><div class="title">${esc(L.name)}</div>
+        <div class="meta">${L.monthly ? `每期 ${money(num(L.monthly))}・` : ''}${left ? `剩 ${left} 期・` : ''}${L.next_date && left ? `下次 ${md(L.next_date)}・` : ''}${how}</div>
+        ${prog != null ? `<div class="meter"><i style="width:${prog.toFixed(1)}%"></i></div>` : ''}</div>
+      <div class="right"><div class="amt">${money(num(L.balance))}</div><div class="meta">${left ? '未繳' : '已繳清'}</div></div></div>`;
+  }).join('');
+  return `<h2>分期／負債 <button class="btn small" data-act="add-liab">＋ 新增</button></h2>
+    <section class="panel">${rows || '<div class="empty">信用卡分期、學貸、車貸等。設定每期金額與下次扣款日，到期會自動記進信用卡或扣帳戶</div>'}</section>`;
+}
+function formRecv(r) {
+  openForm({
+    title: r ? '編輯應收款' : '新增應收款', data: r ? { ...r, got: !!r.received_at } : {},
+    fields: [
+      { k: 'name', label: '項目', req: 1, ph: '例：朋友代墊機票、公司報帳' },
+      { k: 'amount', label: '金額（台幣）', type: 'number', req: 1 },
+      { k: 'due_date', label: '預計收到日期（選填）', type: 'date' },
+      { k: 'note', label: '備註' },
+      ...(r ? [{ k: 'got', label: '已經收到', type: 'check' }] : []),
+    ],
+    onSave: async v => {
+      const row = { name: v.name, amount: v.amount, due_date: v.due_date || null, note: v.note };
+      if (r) { row.received_at = v.got ? (r.received_at || new Date().toISOString()) : null; await upd('receivables', r.id, row); }
+      else await add('receivables', row);
+    },
+    onDelete: r && (() => del('receivables', r.id)),
+  });
+}
+function formReceive(r) {
+  openForm({
+    title: `收到：${r.name}`, note: `<p class="muted" style="margin-top:-6px">${money(num(r.amount))}</p>`,
+    data: { amount: r.amount, account_id: S.accounts[0]?.id || '' },
+    fields: [
+      { k: 'account_id', label: '存進哪個帳戶', type: 'select', options: [['', '（不存入帳戶，只標記已收到）'], ...S.accounts.map(a => [a.id, a.name])] },
+      { k: 'amount', label: '實際收到金額（台幣）', type: 'number', req: 1 },
+    ],
+    onSave: async v => {
+      const acc = S.accounts.find(a => a.id === v.account_id);
+      if (acc) {
+        const delta = fromTWD(v.amount, acc.currency), after = Math.round((num(acc.balance) + delta) * 100) / 100;
+        await upd('accounts', acc.id, { balance: after });
+        await add('balance_log', { account_id: acc.id, delta, balance_after: after, note: `收到 ${r.name}` });
+      }
+      await upd('receivables', r.id, { received_at: new Date().toISOString(), amount: v.amount, account_id: acc?.id || null });
+      toast('已標記收到' + (acc ? `，存入 ${acc.name}` : ''));
+    },
+  });
+}
+function formLiab(L) {
+  openForm({
+    title: L ? '編輯分期／負債' : '新增分期／負債', data: L || { kind: 'installment' },
+    note: '<p class="muted" style="margin-top:-6px;font-size:13px">每到「下次扣款日」，App 會自動把這期金額記到指定信用卡（跟著帳單扣款），或直接從指定帳戶扣除，並減少剩餘金額。</p>',
+    fields: [
+      { k: 'name', label: '項目', req: 1, ph: '例：線上英文課程' },
+      { k: 'kind', label: '類型', type: 'select', options: [['installment', '信用卡分期'], ['loan', '貸款'], ['other', '其他負債']] },
+      { k: 'monthly', label: '每期金額', type: 'number', hint: '留空 = 不自動入帳，只記錄剩餘金額' },
+      { k: 'periods_total', label: '總期數', type: 'number', ph: '例：12' },
+      { k: 'periods_left', label: '剩餘期數', type: 'number', ph: '例：9' },
+      { k: 'balance', label: '剩餘未繳金額', type: 'number', hint: '留空會用「每期金額 × 剩餘期數」計算' },
+      { k: 'next_date', label: '下次扣款日', type: 'date', hint: '之後每個月同一天自動入帳' },
+      { k: 'card_id', label: '掛在哪張信用卡', type: 'select', options: [['', '（不是信用卡分期）'], ...S.cards.map(c => [c.id, c.name])] },
+      { k: 'account_id', label: '或從哪個帳戶扣（非信用卡時）', type: 'select', options: [['', '（不自動扣）'], ...S.accounts.map(a => [a.id, a.name])] },
+      { k: 'note', label: '備註' },
+    ],
+    onSave: async v => {
+      const row = { ...v, card_id: v.card_id || null, account_id: v.card_id ? null : (v.account_id || null), next_date: v.next_date || null,
+        periods_total: v.periods_total ? Math.round(v.periods_total) : null, periods_left: v.periods_left != null ? Math.round(v.periods_left) : (v.periods_total ? Math.round(v.periods_total) : null) };
+      if (row.balance == null) row.balance = num(v.monthly) * (row.periods_left || 0);
+      if (L) await upd('liabilities', L.id, row); else await add('liabilities', row);
+      await runInstallments();
+    },
+    onDelete: L && (() => del('liabilities', L.id)),
+  });
+}
+function allocationPanel(t) {
+  const parts = [['流動資金', t.bank, 'var(--c-bank)'], ['台股', t.stock, 'var(--c-stock)'], ['加密貨幣', t.crypto, 'var(--c-crypto)'], ['應收款', t.recv, 'var(--c-recv)']].filter(p => p[1] > 0);
+  const assets = sum(parts, p => p[1]);
+  if (assets <= 0) return '';
+  const debts = t.debt + t.liab;
+  const ratio = debts / assets * 100;
+  return `<h2>資產分配</h2><section class="panel">
+    <div class="alloc">${parts.map(([n, v, c]) => `<div style="flex:${v};--c:${c}"><b>${Math.round(v / assets * 100)}%</b><span>${n}</span></div>`).join('')}</div>
+    <div class="debt-line"><span>負債比</span><div class="meter"><i style="width:${Math.min(100, ratio).toFixed(1)}%;background:var(--c-debt)"></i></div><b class="${ratio > 50 ? 'neg' : ''}">${ratio.toFixed(1)}%</b></div>
+    <div class="meta">負債 ${money(debts)}（未扣卡費 ${money(t.debt)}${t.liab ? `、分期／貸款 ${money(t.liab)}` : ''}）÷ 資產 ${money(assets)}</div>
+  </section>`;
+}
+
 /* ---------------- themes ---------------- */
 const THEMES = [
   ['champagne', '奶油白・香檳金', ['#fcfaf5', '#d29b3c', '#2c2a35']],
@@ -599,28 +761,31 @@ VIEWS.bank = () => {
     return `<div class="row"><div class="grow"><div class="title">${esc(l.note || '餘額調整')}</div><div class="meta">${new Date(l.created_at).toLocaleDateString('zh-TW')} · ${esc(a?.name || '')}</div></div>
       <div class="right num ${num(l.delta) < 0 ? 'neg' : 'pos'}">${num(l.delta) > 0 ? '+' : ''}${money(num(l.delta), a?.currency)}</div></div>`;
   }).join('');
-  return `<h2>銀行帳戶 <button class="btn small" data-act="add-acc">＋ 新增帳戶</button></h2>
+  return `${S.missingTables.length ? `<div class="banner warn">應收款／負債的資料表還沒建立：請到 Supabase 的 SQL Editor 執行 README 裡「應收款與負債」那段 SQL。</div>` : ''}
+    <h2>銀行帳戶 <button class="btn small" data-act="add-acc">＋ 新增帳戶</button></h2>
     <section class="panel">${rows || '<div class="empty">新增你的第一個帳戶（台幣、外幣帳戶都可以）</div>'}</section>
+    ${recvSection()}
+    ${liabSection()}
     <h2>異動紀錄</h2><section class="panel">${logs || '<div class="empty">信用卡自動扣款、手動調整都會記在這裡</div>'}</section>`;
 };
 
 VIEWS.stocks = () => {
   const rows = stockRows();
-  const total = sum(rows, r => r.value), cost = sum(rows, r => num(r.avg_cost) * num(r.shares));
+  const total = sum(rows, r => r.value), cost = sum(rows, r => r.costTotal);
   const pl = sum(rows.filter(r => r.pl != null), r => r.pl);
-  const body = rows.map(r => `<tr class="click" data-act="edit-stock" data-id="${r.id}">
-      <td><b>${esc(r.code)}</b> <span class="muted">${esc(r.name)}</span><div class="faint" style="font-size:11.5px">${qtyFmt(num(r.shares))} 股</div></td>
+  const body = rows.map(r => `<tr class="click" data-act="open-stock" data-code="${esc(r.code)}">
+      <td><b>${esc(r.code)}</b> <span class="muted">${esc(r.name)}</span><div class="faint" style="font-size:11.5px">${qtyFmt(r.shares)} 股・均價 ${r.avg_cost ? (Math.round(r.avg_cost * 100) / 100).toLocaleString('zh-TW') : '—'}${r.lots.length > 1 ? `・${r.lots.length} 筆` : ''}</div></td>
       <td>${r.price != null ? r.price.toLocaleString('zh-TW') : '<span class="faint">—</span>'}<div class="${r.day > 0 ? 'pos' : r.day < 0 ? 'neg' : 'faint'}" style="font-size:11.5px">${r.day != null ? pctFmt(r.day) : ''}</div></td>
       <td>${money(r.value)}</td>
       <td class="${r.pl > 0 ? 'pos' : r.pl < 0 ? 'neg' : ''}">${r.pl != null ? money(r.pl) : '—'}<div style="font-size:11.5px">${r.plPct != null ? pctFmt(r.plPct) : ''}</div></td>
     </tr>`).join('');
-  return `<h2>台股 <button class="btn small" data-act="add-stock">＋ 新增持股</button></h2>
+  return `<h2>台股 <button class="btn small" data-act="add-stock">＋ 記一筆買進</button></h2>
     ${!CLOUD ? '<div class="banner warn">本機試用模式抓不到台股報價（需要 Supabase 的 tw-quote 函式），目前用成本價計算。</div>' : ''}
     <section class="panel hero" style="padding:16px 18px">
       <div class="label">台股市值</div><div class="big" style="font-size:28px">${money(total)}</div>
       <div class="sub"><span>成本 <b class="num">${money(cost)}</b></span><span>未實現損益 <b class="num ${pl >= 0 ? 'pos' : 'neg'}">${money(pl)}</b></span></div>
     </section>
-    <section class="panel scroll-x" style="margin-top:10px">${rows.length ? `<table class="t"><thead><tr><th>股票</th><th>現價</th><th>市值</th><th>損益</th></tr></thead><tbody>${body}</tbody></table>` : '<div class="empty">新增持股：代號、股數（零股也可以）、平均成本</div>'}</section>
+    <section class="panel scroll-x" style="margin-top:10px">${rows.length ? `<table class="t"><thead><tr><th>股票</th><th>現價</th><th>市值</th><th>損益</th></tr></thead><tbody>${body}</tbody></table>` : '<div class="empty">每次買進記一筆，同一檔股票會自動合併計算股數與均價</div>'}</section>
     <p class="faint" style="font-size:12px">盤中為證交所即時資訊（約延遲數秒到 20 秒），抓不到時改用最近收盤價。</p>`;
 };
 
@@ -683,11 +848,11 @@ function compassSVG(t) {
   }).join('');
   const closeDays = [...new Set(S.cards.filter(c => !sameDayDebit(c)).map(c => Math.min(+c.closing_day, N)))];
   const closes = closeDays.map(d => { const [x, y] = polar(158, dayAng(d)); return `<circle cx="${f1(x)}" cy="${f1(y)}" r="3.6" class="close-mark"><title>${d} 日結帳</title></circle>`; }).join('');
-  const assets = t.bank + t.stock + t.crypto;
+  const assets = t.bank + t.stock + t.crypto + t.recv;
   let ring = '';
   if (assets > 0) {
     let a = -90; const gap = 2.4;
-    for (const [v, cls] of [[t.bank, 'c-bank'], [t.stock, 'c-stock'], [t.crypto, 'c-crypto']]) {
+    for (const [v, cls] of [[t.bank, 'c-bank'], [t.stock, 'c-stock'], [t.crypto, 'c-crypto'], [t.recv, 'c-recv']]) {
       if (v <= 0) continue;
       const sweep = v / assets * 360;
       if (sweep >= 359.9) ring += `<circle r="108" class="seg ${cls}"/>`;
@@ -695,7 +860,7 @@ function compassSVG(t) {
       a += sweep;
     }
   } else ring = '<circle r="108" class="seg-empty"/>';
-  const dSweep = assets > 0 ? Math.min(359, t.debt / assets * 360) : 0;
+  const dSweep = assets > 0 ? Math.min(359, (t.debt + t.liab) / assets * 360) : 0;
   const debt = dSweep > .5 ? `<path d="${arcPath(98, -90, -90 + dSweep)}" class="seg c-debt thin"/>` : '';
   const val = money(t.net);
   const fs = val.length > 13 ? 22 : val.length > 11 ? 26 : 31;
@@ -746,10 +911,11 @@ VIEWS.overview = () => {
   const leg = (cls, name, v) => `<div><i class="${cls}"></i><span>${name}</span><b>${money(v)}</b></div>`;
   return `
   <section class="dial">${compassSVG(t)}
-    <div class="dial-legend">${leg('c-bank', '銀行', t.bank)}${leg('c-stock', '台股', t.stock)}${leg('c-crypto', '加密貨幣', t.crypto)}${leg('c-debt', '未扣卡費', -t.debt)}</div>
+    <div class="dial-legend">${leg('c-bank', '銀行', t.bank)}${leg('c-stock', '台股', t.stock)}${leg('c-crypto', '加密貨幣', t.crypto)}${t.recv ? leg('c-recv', '應收款', t.recv) : ''}${leg('c-debt', '未扣卡費', -t.debt)}${t.liab ? leg('c-liab', '分期／負債', -t.liab) : ''}</div>
     ${spark}
   </section>
   ${S.cards.some(c => (c.rewards || []).length) ? `<button class="rew-strip" data-act="recommend"><span>本期預估回饋</span><b>${money(sum(S.cards, c => cycleReward(c, cardState(c).open.end).total))}</b><small>刷哪張最划算 ›</small></button>` : ''}
+  ${allocationPanel(t)}
   <h2>接下來的扣款</h2>
   <section class="panel">${upRows || ((CFG.presetCards || []).length ? `<button class="empty-cta" data-act="preset-cards">加入我的 ${CFG.presetCards.length} 張信用卡</button>` : '<button class="empty-cta" data-act="add-card">新增第一張信用卡，扣款日會出現在羅盤外圈</button>')}</section>
   <h2>最近刷卡</h2>
@@ -843,8 +1009,10 @@ function openFab() {
     <button data-act="recommend" class="wide"><b>這筆刷哪張？</b><small>依各卡回饋與剩餘上限，算出最划算的卡</small></button>
     <button data-act="add-txn"><b>刷卡消費</b><small>實體卡、網購等捷徑抓不到的</small></button>
     <button data-act="fab-acc"><b>帳戶存提</b><small>薪水入帳、轉帳、對帳</small></button>
-    <button data-act="add-stock"><b>台股持股</b><small>買進或調整股數</small></button>
+    <button data-act="add-stock"><b>台股買進</b><small>每次買進記一筆，自動合併均價</small></button>
     <button data-act="add-hold"><b>加密持倉</b><small>交易所的幣種數量</small></button>
+    <button data-act="add-recv"><b>應收款</b><small>別人欠你、待入帳的錢</small></button>
+    <button data-act="add-liab"><b>分期／負債</b><small>信用卡分期、貸款，每月自動入帳</small></button>
   </div></div>`;
   m.hidden = false;
   m.onclick = e => { if (e.target === m) { m.hidden = true; m.innerHTML = ''; } };
@@ -1028,19 +1196,58 @@ function formTxn(t, preset = {}) {
     onDelete: t && (() => del('transactions', t.id)),
   });
 }
-function formStock(s) {
+function formStock(s, preset = {}) {
+  const d = s || preset;
   openForm({
-    title: s ? '編輯持股' : '新增台股持股', data: s || {},
+    title: s ? '編輯這筆交易' : d.code ? `買進 ${d.code}` : '記一筆台股買進',
+    data: { ...d, bought: ymd(new Date(d.created_at || Date.now())) },
     fields: [
       { k: 'code', label: '股票代號', req: 1, ph: '例：2330、0050、00878' },
       { k: 'name', label: '名稱（選填，會自動帶入）' },
-      { k: 'shares', label: '股數（1 張 = 1000 股）', type: 'number', req: 1 },
-      { k: 'avg_cost', label: '平均成本（每股）', type: 'number' },
-      { k: 'note', label: '備註' },
+      { k: 'shares', label: '股數（1 張 = 1000 股，賣出填負數）', type: 'number', req: 1 },
+      { k: 'avg_cost', label: '成交價（每股，可把手續費攤進去）', type: 'number', hint: '賣出那筆可留空，不影響均價' },
+      { k: 'bought', label: '交易日期', type: 'date' },
+      { k: 'note', label: '備註', ph: '例：定期定額、除權息配股' },
     ],
-    onSave: async v => { v.code = v.code.toUpperCase(); if (s) await upd('stocks', s.id, v); else await add('stocks', v); await loadQuotes(true); },
+    onSave: async v => {
+      const row = { code: v.code.toUpperCase(), name: v.name, shares: v.shares, avg_cost: v.avg_cost, note: v.note };
+      if (v.bought) { const t = parseYmd(v.bought); t.setHours(12); row.created_at = t.toISOString(); }
+      if (s) await upd('stocks', s.id, row); else await add('stocks', row);
+      await loadQuotes(true);
+    },
     onDelete: s && (() => del('stocks', s.id)),
   });
+}
+function openStock(code) {
+  const r = stockRows().find(x => x.code === code); if (!r) return;
+  const m = $('#modal');
+  const lots = r.lots.map(l => `<div class="row click" data-act="edit-stock" data-id="${l.id}">
+      <div class="grow"><div class="title">${num(l.shares) < 0 ? '賣出' : '買進'} ${qtyFmt(Math.abs(num(l.shares)))} 股</div>
+        <div class="meta">${new Date(l.created_at).toLocaleDateString('zh-TW')}${l.note ? '・' + esc(l.note) : ''}</div></div>
+      <div class="right"><div class="num">${l.avg_cost ? '@ ' + num(l.avg_cost).toLocaleString('zh-TW') : ''}</div>
+        <div class="meta num">${l.avg_cost ? money(num(l.shares) * num(l.avg_cost)) : ''}</div></div></div>`).join('');
+  m.innerHTML = `<div class="sheet"><h3>${esc(r.code)} ${esc(r.name)}</h3>
+    <div class="cycle">
+      <div><small>合計股數</small><b>${qtyFmt(r.shares)}</b></div>
+      <div><small>加權均價</small><b>${r.avg_cost ? (Math.round(r.avg_cost * 100) / 100).toLocaleString('zh-TW') : '—'}</b></div>
+      <div><small>市值</small><b>${money(r.value)}</b></div>
+      <div><small>未實現損益</small><b class="${r.pl > 0 ? 'pos' : r.pl < 0 ? 'neg' : ''}">${r.pl != null ? money(r.pl) : '—'}</b></div>
+    </div>
+    <h2>交易紀錄（${r.lots.length} 筆）</h2>
+    <div class="panel">${lots}</div>
+    <div class="actions">
+      ${r.lots.length > 1 ? `<button class="btn ghost" data-act="merge-stock" data-code="${esc(r.code)}">合併成一筆</button>` : ''}
+      <button class="btn primary" data-act="buy-stock" data-code="${esc(r.code)}">＋ 再買一筆</button></div></div>`;
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m) { m.hidden = true; m.innerHTML = ''; } };
+}
+async function mergeStock(code) {
+  const r = stockRows().find(x => x.code === code); if (!r || r.lots.length < 2) return;
+  if (!confirm(`把 ${r.lots.length} 筆交易合併成一筆（${r.shares} 股、均價 ${Math.round(r.avg_cost * 100) / 100}）？合併後就看不到每筆明細了。`)) return;
+  const keep = r.lots[0];
+  await upd('stocks', keep.id, { shares: r.shares, avg_cost: Math.round(r.avg_cost * 10000) / 10000, note: `合併 ${r.lots.length} 筆`, name: r.name || keep.name });
+  for (const l of r.lots.slice(1)) await del('stocks', l.id);
+  toast('已合併');
 }
 function formHolding(h) {
   openForm({
@@ -1165,6 +1372,11 @@ document.addEventListener('click', async e => {
       case 'fab': openFab(); break;
       case 'theme': applyTheme(el.dataset.theme); render(); break;
       case 'recommend': openRecommend(); break;
+      case 'add-recv': formRecv(); break;
+      case 'edit-recv': formRecv(find('receivables')); break;
+      case 'got-recv': e.stopPropagation(); formReceive(find('receivables')); break;
+      case 'add-liab': formLiab(); break;
+      case 'edit-liab': formLiab(find('liabilities')); break;
       case 'preset-cards': await addPresetCards(true); render(); break;
       case 'add-rule': formRule(S.cards.find(c => c.id === el.dataset.card)); break;
       case 'edit-rule': formRule(S.cards.find(c => c.id === el.dataset.card), +el.dataset.i); break;
@@ -1192,6 +1404,9 @@ document.addEventListener('click', async e => {
       case 'edit-txn': formTxn(find('transactions')); break;
       case 'add-stock': formStock(); break;
       case 'edit-stock': formStock(find('stocks')); break;
+      case 'open-stock': openStock(el.dataset.code); break;
+      case 'buy-stock': { const r = stockRows().find(x => x.code === el.dataset.code); formStock(null, { code: r.code, name: r.name }); break; }
+      case 'merge-stock': await mergeStock(el.dataset.code); $('#modal').hidden = true; $('#modal').innerHTML = ''; render(); break;
       case 'add-hold': formHolding(); break;
       case 'edit-hold': formHolding(find('crypto_holdings')); break;
       case 'add-wallet': formWallet(); break;
@@ -1234,6 +1449,7 @@ async function startApp() {
   render();
   await loadToken().catch(() => { });
   await loadFX();
+  await runInstallments().catch(e => console.warn('installments', e));
   await runSettlements();
   render();
   handleHash();
@@ -1263,5 +1479,5 @@ async function boot() {
 }
 
 window.addEventListener('hashchange', handleHash);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#app').hidden) { loadAll().then(runSettlements).then(() => refreshAll(false)).catch(() => { }); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#app').hidden) { loadAll().then(runInstallments).then(runSettlements).then(() => refreshAll(false)).catch(() => { }); } });
 boot();
