@@ -1,0 +1,45 @@
+/* Asset Compass · UI refinement v1 · presentation only.
+   Intentionally does not modify app state, calculations, or Supabase. */
+:root { --ui-radius: 19px; --ui-ease: cubic-bezier(.2,.75,.25,1); }
+body { letter-spacing: .005em; }
+.top { padding-inline: max(18px, env(safe-area-inset-left)); padding-bottom: 12px; background: linear-gradient(to bottom, var(--night) 72%, color-mix(in srgb,var(--night) 90%,transparent)); }
+.brand { letter-spacing: .11em; }
+main { padding-inline: 18px; }
+h2 { margin-top: 30px; margin-bottom: 12px; font-weight: 600; letter-spacing: .09em; }
+.panel { border-radius: var(--ui-radius); padding: 18px; border-color: color-mix(in srgb,var(--line) 58%,var(--panel)); box-shadow: 0 3px 14px rgba(var(--shadow),.045),0 1px 2px rgba(var(--shadow),.025); }
+.panel + .panel { margin-top: 12px; }
+.row { gap: 14px; padding-block: 15px; }
+.row .title { font-weight: 600; }
+.meta,.row .meta { line-height: 1.55; }
+.amt { letter-spacing: -.018em; }
+.due-sum { border-radius: 20px; padding: 20px 19px; background: linear-gradient(125deg,color-mix(in srgb,var(--gold) 12%,var(--panel)),var(--panel) 80%); box-shadow: 0 4px 18px rgba(var(--shadow),.045); }
+.due-sum b { letter-spacing: -.025em; }
+.ctiles { gap: 11px; }
+.ctile { min-height: 100px; border-radius: 18px; padding: 16px 17px 16px 20px; border-color: color-mix(in srgb,var(--line) 65%,var(--panel)); box-shadow: 0 3px 12px rgba(var(--shadow),.045); transition: border-color .18s var(--ui-ease),transform .18s var(--ui-ease),box-shadow .18s var(--ui-ease); }
+.ctile:active { transform: scale(.993); }
+.ct-edge { width: 4px; }
+.ct-name { letter-spacing: .015em; }
+.ct-right b { letter-spacing: -.02em; }
+.ct-bar { height: 4px; border-radius: 9px; }
+.cc { box-shadow: 0 7px 22px rgba(var(--shadow),.075); }
+.bill { border-radius: 14px; }
+.btn { transition: background-color .16s var(--ui-ease),border-color .16s var(--ui-ease),transform .16s var(--ui-ease),box-shadow .16s var(--ui-ease); }
+.btn.primary { background: color-mix(in srgb,var(--gold) 85%,var(--text)); box-shadow: 0 3px 9px rgba(var(--shadow),.07); }
+.btn.primary:hover { background: var(--accent-text); }
+input,select,textarea { min-height: 43px; border-radius: 12px; background: color-mix(in srgb,var(--panel) 76%,var(--night)); transition: border-color .16s,box-shadow .16s; }
+input:focus,select:focus,textarea:focus { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb,var(--gold) 14%,transparent); }
+label { font-weight: 500; line-height: 1.6; }
+.sheet { border-radius: 25px 25px 0 0; box-shadow: 0 -12px 50px rgba(var(--shadow),.12); }
+.sheet h3 { letter-spacing: .04em; }
+.modal { background: rgba(27,26,29,.33); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.tabs { border-radius: 25px; box-shadow: 0 10px 32px rgba(var(--shadow),.13),0 1px 5px rgba(var(--shadow),.04); }
+.tabs button:not(.fab) { min-height: 46px; transition: color .16s,background-color .16s; }
+.tabs button:not(.fab):active { background: color-mix(in srgb,var(--gold) 9%,transparent); }
+.tabs .fab { box-shadow: 0 0 0 5px var(--night),0 7px 19px color-mix(in srgb,var(--fab) 30%,transparent); }
+.icon-btn { transition: color .16s,background-color .16s,border-color .16s; }
+.icon-btn:active { background: var(--panel-2); }
+.rew-strip,.rec-btn { transition: border-color .16s,background-color .16s; }
+.auth-card { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 25px; padding: 30px 22px; box-shadow: 0 14px 44px rgba(var(--shadow),.07); }
+@media (min-width: 600px) { .sheet { border-radius: 24px; } }
+@media (max-width: 380px) { main { padding-inline: 14px; } .panel { padding: 15px; } .ctile { gap: 10px; padding-right: 12px; } .ct-right b { font-size: 19px; } .due-sum b { font-size: 29px; } .tabs { width: calc(100% - 16px); grid-template-columns: 1fr 1fr 64px 1fr 1fr; } }
+@media (prefers-reduced-motion: reduce) { .ctile,.btn,.icon-btn,.tabs button,input,select,textarea { transition: none !important; } }
