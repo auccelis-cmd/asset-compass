@@ -762,3 +762,26 @@ html { font-variant-numeric: lining-nums; }
 .tt-green .tt-name, .tt-navy .tt-name, .tt-purple .tt-name { color: #f3efe4; }
 .tt-green .tt-name small, .tt-navy .tt-name small, .tt-purple .tt-name small, .tt-green .tt-desc, .tt-navy .tt-desc, .tt-purple .tt-desc { color: #c9c3b6; }
 .tt-ivory .tt-name { color: #2a2a33; } .tt-ivory .tt-name small, .tt-ivory .tt-desc { color: #8a8478; }
+
+/* ================= 清透版：去除霧感 ================= */
+/* 背景改實色，拿掉光暈、星點與半透明玻璃 */
+body { background: var(--night) !important; }
+body::before { display: none; }
+.top { background: var(--night); }
+.tabs { background: var(--panel); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.dash, .hero2, .sum-card, .panel, .fold, .tile, .crow, .inv-row, .list-card, .info-grid div { background: var(--panel); }
+.dash { box-shadow: 0 2px 10px rgba(var(--shadow),.06); }
+.hero2, .sum-card { box-shadow: 0 2px 8px rgba(var(--shadow),.05); }
+.sum-art { opacity: .14; }
+.explore { background: var(--panel); backdrop-filter: none; }
+.modal { background: rgba(var(--shadow),.45); }
+.compass2 .cbase { fill: var(--panel-2); filter: none; }
+.compass2 .cr { opacity: 1; }
+.scenery .m1 { opacity: .55; } .scenery .m2 { opacity: .7; } .scenery .m3 { opacity: 1; }
+.chip-btn.on, .pills button.on { box-shadow: none; }
+
+/* 層次與對比：面板和背景拉開、字色更清楚 */
+[data-theme="ivory"] { --night: #f3eee3; --panel: #ffffff; --panel-2: #f7f2e8; --line: #e2d7c3; --line-soft: #ebe3d4; --muted: #6a655d; --faint: #9c958a; --text: #24242c; }
+[data-theme="green"] { --night: #14231e; --panel: #203630; --panel-2: #29443c; --line: #3c5c51; --line-soft: #31504a; --muted: #b3c3b9; --text: #f3f4ee; }
+[data-theme="navy"] { --night: #131d2c; --panel: #1f2d42; --panel-2: #283a54; --line: #3b5070; --line-soft: #31455f; --muted: #b2bdcf; --text: #f2f4f8; }
+[data-theme="purple"] { --night: #1f1727; --panel: #30243a; --panel-2: #3c2e48; --line: #574667; --line-soft: #4a3a59; --muted: #c4b6cd; --text: #f6f0f5; }

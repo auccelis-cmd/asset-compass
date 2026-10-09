@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10d';
+const APP_VERSION = '2026.10.10e';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
