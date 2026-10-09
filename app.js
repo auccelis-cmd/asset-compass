@@ -3,6 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
+const APP_VERSION = '2026.10.10a';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -1194,7 +1195,7 @@ VIEWS.cards = () => {
       <div class="r"><small>最近一筆</small><b>${md(ymd(next.st.next.date))}</b><span>${esc(next.c.name)}</span></div>
     </section>
     <div class="ctiles">${states.map(x => cardTile(x.c)).join('')}</div>
-    <div class="actions" style="margin-top:12px"><button class="btn" data-act="recommend">這筆刷哪張最划算？</button><button class="btn ghost" data-act="add-card">＋ 新增信用卡</button></div>`;
+    <div class="actions" style="margin-top:12px"><button class="btn" data-act="recommend">這筆刷哪張最划算？</button><button class="btn" data-act="import-txn">匯入帳單明細</button><button class="btn ghost" data-act="add-card">＋ 新增信用卡</button></div>`;
 };
 
 /* ---- 投資：台股＋加密 ---- */
@@ -1211,6 +1212,7 @@ function openFab() {
   const m = $('#modal');
   m.innerHTML = `<div class="sheet"><h3>要記什麼？</h3><div class="fab-grid">
     <button data-act="recommend" class="wide"><b>這筆刷哪張？</b><small>依各卡回饋與剩餘上限，算出最划算的卡</small></button>
+    <button data-act="import-txn" class="wide"><b>匯入帳單明細</b><small>選 Claude 整理好的 CSV 檔，一次建好多筆刷卡紀錄</small></button>
     <button data-act="add-txn"><b>刷卡消費</b><small>實體卡、網購等捷徑抓不到的</small></button>
     <button data-act="fab-acc"><b>帳戶存提</b><small>薪水入帳、支出、對帳</small></button>
     <button data-act="transfer"><b>帳戶轉帳</b><small>帳戶之間互轉、換匯</small></button>
@@ -1256,7 +1258,7 @@ VIEWS.settings = () => {
     <div class="actions" style="margin-top:0"><button class="btn small" data-act="export">匯出 JSON 備份</button>
     ${!CLOUD ? '<label class="btn small" style="margin:0;color:var(--text)">匯入備份<input type="file" accept="application/json" data-act="import" hidden></label>' : ''}</div>
   </section>
-  <p class="faint" style="font-size:12px;text-align:center;margin-top:24px">匯率：open.er-api.com · 台股：證交所／櫃買中心 · 加密：CoinGecko、publicnode、mempool.space</p>`;
+  <p class="faint" style="font-size:12px;text-align:center;margin-top:24px">版本 ${APP_VERSION}<br>匯率：open.er-api.com · 台股：證交所／櫃買中心 · 加密：CoinGecko、publicnode、mempool.space</p>`;
 };
 
 const EYE_OPEN = '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
