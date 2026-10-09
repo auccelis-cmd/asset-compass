@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10b';
+const APP_VERSION = '2026.10.10c';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -905,9 +905,9 @@ function formReceive(r) {
     },
   });
 }
-function formLiab(L) {
+function formLiab(L, preset = {}) {
   openForm({
-    title: L ? '編輯分期／負債' : '新增分期／負債', data: L || { kind: 'installment' },
+    title: L ? '編輯分期／負債' : '新增分期／負債', data: L || { kind: 'installment', ...preset },
     note: '<p class="muted" style="margin-top:-6px;font-size:13px">每到「下次扣款日」，App 會自動把這期金額記到指定信用卡（跟著帳單扣款），或直接從指定帳戶扣除，並減少剩餘金額。</p>',
     fields: [
       { k: 'name', label: '項目', req: 1, ph: '例：線上英文課程' },
@@ -1269,7 +1269,7 @@ VIEWS.settings = () => {
   const cur = document.documentElement.dataset.theme || 'champagne';
   const themes = THEMES.map(([k, name, c]) => `<button data-act="theme" data-theme="${k}" class="${k === cur ? 'on' : ''}" aria-pressed="${k === cur}">
       <span class="sw">${c.map(x => `<i style="background:${x}"></i>`).join('')}</span><span>${name}</span></button>`).join('');
-  return `<h2>主題配色</h2><section class="panel"><div class="theme-grid">${themes}</div></section>
+  return `<h2>主題設定</h2><section class="panel">${themeTiles()}</section>
   ${(CFG.presetCards || []).some(p => !S.cards.some(c => c.name === p.name)) ? `<h2>預設信用卡</h2><section class="panel"><p class="meta" style="margin-top:0">還有 ${CFG.presetCards.filter(p => !S.cards.some(c => c.name === p.name)).map(p => esc(p.name)).join('、')} 沒有建立</p><button class="btn small primary" data-act="preset-cards">補建這些卡片</button></section>` : ''}
   <h2>帳號與模式</h2>
   <section class="panel">
@@ -1622,6 +1622,521 @@ async function addPresetCards(force) {
   if (added.length) toast(`已新增 ${added.join('、')}，記得到卡片設定選扣款帳戶`, 4500);
 }
 
+/* ================================================================
+ * UI v2：依 2026/10 設計稿改版（總覽、帳戶、信用卡、底部彈窗）
+ * ================================================================ */
+const IC = {
+  bank: '<path d="M3 9.5 12 4l9 5.5M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20.5h18"/>',
+  wallet: '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M16 12.5h2M3 9h18"/>',
+  box: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  card: '<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6 15h4"/>',
+  chart: '<path d="M4 19.5h16M6 16v-4M10 16V9M14 16v-6M18 16V6"/>',
+  plus: '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>',
+  split: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="12" r="3.5"/><path d="M12 4v2M12 18v2"/>',
+  gear: '<rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17M7 14.5h4"/>',
+  more: '<circle cx="12" cy="12" r="8.5"/><circle cx="8" cy="12" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16" cy="12" r=".8" fill="currentColor"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
+  swap: '<path d="M8 4v15M8 19l-3-3M8 19l3-3M16 20V5M16 5l-3 3M16 5l3 3"/>',
+  chev: '<path d="m9 6 6 6-6 6"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  up: '<path d="M12 19V6M6 11l6-6 6 6"/>',
+  arrowDown: '<path d="M12 5v13M6 13l6 6 6-6"/>',
+  food: '<path d="M7 3v8M5 3v4a2 2 0 0 0 4 0V3M7 11v10M16 3c-1.7 1.4-2.5 3.6-2.5 6.5V13H17V3M17 13v8"/>',
+  car: '<path d="M5 16V11l2-5h10l2 5v5M3 16h18M7 19v-3M17 19v-3"/><circle cx="7.5" cy="13" r=".8" fill="currentColor"/><circle cx="16.5" cy="13" r=".8" fill="currentColor"/>',
+  home: '<path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/>',
+  bag: '<path d="M5 8h14l-1 12H6Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+  play: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3Z"/>',
+  dots: '<circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/>',
+  bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+};
+const svgI = (k, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[k] || ''}</svg>`;
+
+/* ---------- 消費類別 ---------- */
+const CATS = [
+  ['food', '餐飲', 'food', '#e0894f'],
+  ['traffic', '交通', 'car', '#4f8fd6'],
+  ['life', '生活', 'home', '#3fa58a'],
+  ['shop', '購物', 'bag', '#c9699a'],
+  ['fun', '娛樂', 'play', '#8a6fd1'],
+  ['other', '其他', 'dots', '#8f8a80'],
+];
+const CAT = Object.fromEntries(CATS.map(c => [c[0], c]));
+function guessCat(m) {
+  m = (m || '').toLowerCase();
+  if (/手續費|回饋|年費|利息/.test(m)) return 'other';
+  if (/優步[－-]|uber\s*eats|foodpanda|咖啡|cafe|coffee|星巴克|starbucks|麥當勞|mcdonald|肯德基|摩斯|餐|食|飲|串燒|餃|鍋|麵|飯|壽司|拉麵|燒肉|早午|漢堡|甜點|麵包|茶/.test(m)) return 'food';
+  if (/高鐵|台鐵|捷運|悠遊|一卡通|ipass|easycard|uber|優步|計程車|taxi|中油|加油|停車|irent|gogoro|wemo|航空|機票|airline/.test(m)) return 'traffic';
+  if (/全聯|家樂福|7-eleven|7-11|統一超商|全家|萊爾富|ok超商|超商|藥局|屈臣氏|康是美|寶雅|電信|中華電信|台灣大|遠傳|水費|電費|瓦斯|房租|管理費/.test(m)) return 'life';
+  if (/momo|蝦皮|shopee|pchome|amazon|淘寶|百貨|誠品|uniqlo|ikea|costco|好市多|博客來|蝦皮|網購|商城/.test(m)) return 'shop';
+  if (/apple\.com|itunes|netflix|spotify|youtube|disney|steam|playstation|nintendo|電影|威秀|秀泰|kkbox|google\s*play|rately|遊戲/.test(m)) return 'fun';
+  return 'other';
+}
+const catOf = t => CAT[t.category] ? t.category : guessCat(t.merchant);
+const catDot = (k, size = 'md') => { const c = CAT[k] || CAT.other; return `<span class="cat-ic ${size}" style="--c:${c[3]}">${svgI(c[2])}</span>`; };
+
+/* ---------- 色彩與圖示 ---------- */
+const hueOf = s => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
+const ACC_TYPES = [['bank', '銀行帳戶'], ['epay', '電子支付'], ['other', '其他資產']];
+const accType = a => a.type || (/line\s*pay|街口|全支付|悠遊付|一卡通|pi錢包|icash|paypal|wise/i.test(`${a.name} ${a.bank}`) ? 'epay' : 'bank');
+function accIcon(a) {
+  const label = (a.bank || a.name || '?').replace(/銀行|商業|股份|有限公司/g, '').trim().slice(0, 1).toUpperCase();
+  const h = hueOf(a.bank || a.name);
+  return `<span class="acc-ic" style="--h:${h}">${esc(label)}</span>`;
+}
+const BANKS = ['聯邦銀行', '永豐銀行', '星展銀行', '國泰世華', '玉山銀行', '台新銀行', '中國信託', '富邦銀行', '台北富邦', '第一銀行', '兆豐銀行', '其他'];
+
+/* ---------- 共用：底部彈窗表單 ---------- */
+function openForm({ title, fields, data = {}, onSave, onDelete, note = '', tabs = null, submitLabel = '儲存', cancelLabel = '取消' }) {
+  const m = $('#modal');
+  const val = f => data[f.k] ?? f.def ?? '';
+  const fieldHtml = f => {
+    const v = val(f), req = f.req ? 'required' : '', cls = `fld${f.half ? ' half' : ''}`;
+    if (f.type === 'swap') return `<div class="fld swap-row"><button type="button" class="swap-btn" data-swap="${f.a},${f.b}" aria-label="對調">${svgI('swap')}</button></div>`;
+    if (f.type === 'check') return `<label class="${cls} check"><input type="checkbox" name="${f.k}" ${v ? 'checked' : ''}> <span>${esc(f.label)}</span></label>`;
+    let input;
+    if (f.type === 'select') input = `<span class="sel"><select name="${f.k}" ${req}>${f.options.map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span>`;
+    else if (f.type === 'chips') input = `<input type="hidden" name="${f.k}" value="${esc(v)}"><span class="chips" data-chips="${f.k}">${f.options.map(([ov, ol, ic]) => `<button type="button" class="chip-btn${String(ov) === String(v) ? ' on' : ''}" data-v="${esc(ov)}">${ic ? catDot(ov, 'sm') : ''}${esc(ol)}</button>`).join('')}</span>`;
+    else if (f.type === 'money') input = `<span class="money-in"><span class="cur" data-cur-for="${f.k}">${esc(f.cur || 'NT$')}</span><input name="${f.k}" type="number" step="any" inputmode="decimal" value="${esc(v)}" placeholder="0" ${req}></span>${f.quick ? `<span class="quick">${f.quick.map(q => `<button type="button" data-quick="${f.k}" data-q="${q}">+${q.toLocaleString()}</button>`).join('')}</span>` : ''}`;
+    else input = `<input name="${f.k}" type="${f.type || 'text'}" value="${esc(v)}" ${f.type === 'number' ? 'step="any" inputmode="decimal"' : ''} ${f.ph ? `placeholder="${esc(f.ph)}"` : ''} ${req}>`;
+    return `<label class="${cls}"><span class="lb">${esc(f.label)}</span>${input}${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ''}</label>`;
+  };
+  const main = fields.filter(f => !f.more), more = fields.filter(f => f.more);
+  m.innerHTML = `<form class="sheet"><span class="grab"></span>
+    <div class="sheet-head"><h3>${esc(title)}</h3><button type="button" class="x" data-f="cancel" aria-label="關閉">×</button></div>
+    ${tabs ? `<div class="seg-ctl sheet-tabs">${tabs.map(t => `<button type="button" class="${t.on ? 'on' : ''}" ${t.on ? '' : `data-act="${t.act}"`}>${esc(t.label)}</button>`).join('')}</div>` : ''}
+    ${note}<div class="fgrid">${main.map(fieldHtml).join('')}</div>
+    ${more.length ? `<details class="more"><summary>更多選項</summary><div class="fgrid">${more.map(fieldHtml).join('')}</div></details>` : ''}
+    <div class="actions sheet-actions">${onDelete ? '<button type="button" class="btn danger" data-f="del">刪除</button>' : ''}
+      <button type="button" class="btn" data-f="cancel">${esc(cancelLabel)}</button><button class="btn primary" type="submit">${esc(submitLabel)}</button></div></form>`;
+  m.hidden = false;
+  const form = $('form', m);
+  const close = () => { m.hidden = true; m.innerHTML = ''; };
+  m.onclick = e => { if (e.target === m) close(); };
+  m.querySelectorAll('[data-f="cancel"]').forEach(b => b.onclick = close);
+  m.querySelectorAll('[data-chips]').forEach(box => box.onclick = e => {
+    const b = e.target.closest('.chip-btn'); if (!b) return;
+    box.querySelectorAll('.chip-btn').forEach(x => x.classList.toggle('on', x === b));
+    form.elements[box.dataset.chips].value = b.dataset.v;
+  });
+  m.querySelectorAll('[data-quick]').forEach(b => b.onclick = () => { const el = form.elements[b.dataset.quick]; el.value = num(el.value) + +b.dataset.q; el.dispatchEvent(new Event('input')); });
+  m.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => { const [x, y] = b.dataset.swap.split(','); const ex = form.elements[x], ey = form.elements[y]; [ex.value, ey.value] = [ey.value, ex.value]; ex.dispatchEvent(new Event('change')); });
+  if (onDelete) $('[data-f="del"]', m).onclick = async () => { if (confirm('確定刪除？')) { try { await onDelete(); close(); render(); } catch (err) { toast('刪除失敗：' + err.message); } } };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const out = {};
+    for (const f of fields) {
+      if (f.type === 'swap') continue;
+      const el = form.elements[f.k]; if (!el) continue;
+      out[f.k] = f.type === 'check' ? el.checked : (f.type === 'number' || f.type === 'money') ? (el.value === '' ? null : parseFloat(el.value)) : el.value.trim();
+    }
+    const btn = $('button[type=submit]', form); btn.disabled = true;
+    try { const r = await onSave(out, form); if (r === false) { btn.disabled = false; return; } close(); render(); }
+    catch (err) { btn.disabled = false; toast('儲存失敗：' + (err.message || err)); }
+  };
+  return form;
+}
+
+/* ---------- 交易列 ---------- */
+function txnRow(t, opts = {}) {
+  const c = S.cards.find(x => x.id === t.card_id);
+  const foreign = t.currency && t.currency !== 'TWD';
+  const k = catOf(t);
+  const d = new Date(t.txn_at);
+  return `<div class="row click txn" data-act="edit-txn" data-id="${t.id}" data-cat="${k}" data-text="${esc((t.merchant || '').toLowerCase())}">
+    ${catDot(k)}
+    <div class="grow"><div class="title">${esc(t.merchant || '（未填商家）')}</div>
+      <div class="meta">${d.getMonth() + 1}/${pad(d.getDate())} · ${CAT[k][1]}${opts.showCard !== false ? ` · ${c ? esc(c.name) : `<span class="warn">${esc(t.card_label || '未對應卡片')}</span>`}` : ''}${t.source === 'shortcut' ? ' · 捷徑' : ''}${t.settled_cycle ? ' · 已扣款' : ''}</div></div>
+    <div class="right"><div class="amt-sm">${money(billAmt(t))}</div>${foreign ? `<div class="meta">${money(num(t.amount), t.currency)}</div>` : ''}${rewOf(t.id) > 0.05 ? `<div class="meta rew">回饋 ${money(rewOf(t.id), 'TWD', rewOf(t.id) < 10 ? 1 : 0)}</div>` : ''}</div></div>`;
+}
+
+/* ---------- 01 總覽 ---------- */
+function splitTotals() {
+  const t = totals();
+  const accTW = a => { const v = toTWD(num(a.balance), a.currency); return Number.isFinite(v) ? v : 0; };
+  const bank = sum(S.accounts.filter(a => accType(a) !== 'other'), accTW);
+  const otherAcc = sum(S.accounts.filter(a => accType(a) === 'other'), accTW);
+  const invest = t.stock + t.crypto;
+  const other = otherAcc + t.recv;
+  const gross = bank + invest + other;
+  return { ...t, bankOnly: bank, invest, other, gross };
+}
+function areaChart(points) {
+  if (points.length < 2) return '<div class="chart-empty">每天開 App 會自動記一筆，滿兩天就會出現走勢</div>';
+  const W = 320, H = 96, vals = points.map(p => p.v), mn = Math.min(...vals), mx = Math.max(...vals), rng = mx - mn || 1;
+  const xy = points.map((p, i) => [i / (points.length - 1) * W, H - 10 - (p.v - mn) / rng * (H - 24)]);
+  const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+  const [lx, ly] = xy.at(-1);
+  return `<svg class="area" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--gold);stop-opacity:.32"/><stop offset="1" style="stop-color:var(--gold);stop-opacity:0"/></linearGradient></defs>
+    <path d="${line} L${W} ${H} L0 ${H}Z" fill="url(#ag)"/><path d="${line}" fill="none" stroke="var(--gold)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    </svg><span class="area-dot" style="left:${(lx / W * 100).toFixed(2)}%;top:${(ly / H * 100).toFixed(2)}%"></span>`;
+}
+function donut(parts, total, label) {
+  const R = 52, C = 2 * Math.PI * R;
+  const pos = parts.filter(p => p.v > 0), sumPos = sum(pos, p => p.v) || 1;
+  let off = 0;
+  const arcs = pos.map(p => { const len = p.v / sumPos * C; const s = `<circle r="${R}" fill="none" stroke="${p.c}" stroke-width="16" stroke-dasharray="${Math.max(0, len - 2).toFixed(2)} ${(C - len + 2).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"/>`; off += len; return s; }).join('');
+  return `<div class="donut-wrap"><svg class="donut" viewBox="-70 -70 140 140" aria-hidden="true"><g transform="rotate(-90)"><circle r="${R}" fill="none" stroke="var(--panel-2)" stroke-width="16"/>${arcs}</g></svg>
+    <div class="donut-c"><small>${esc(label)}</small><b>${total}</b></div></div>`;
+}
+const shortMoney = v => S.hide ? '••••' : Math.abs(v) >= 1e6 ? `NT$${(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e4 ? `NT$${(v / 1e4).toFixed(1)}萬` : money(v);
+VIEWS.overview = () => {
+  const t = splitTotals();
+  const range = S.range || 30;
+  const since = new Date(); since.setDate(since.getDate() - range);
+  const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.net) }));
+  if (pts.length) pts[pts.length - 1] = { v: t.net }; else pts.push({ v: t.net });
+  const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
+  const pctOf = v => t.gross > 0 ? v / t.gross * 100 : 0;
+  const tile = (ic, name, v, p, neg) => `<div class="tile"><div class="tile-h">${svgI(ic)}<span>${name}</span></div><b>${money(v)}</b><span class="tp ${neg ? 'neg' : 'pos'}">${svgI(neg ? 'arrowDown' : 'up', 'ti')}${Math.abs(p).toFixed(1)}%</span></div>`;
+  const cardDebt = t.debt + t.liab;
+  const parts = [
+    { n: '投資', v: t.invest, c: 'var(--c-stock)' },
+    { n: '銀行存款', v: t.bankOnly, c: 'var(--c-bank)' },
+    { n: '其他', v: t.other, c: 'var(--c-recv)' },
+  ];
+  const legend = [...parts.map(p => `<div><i style="background:${p.c}"></i><span>${p.n}</span><b>${pctOf(p.v).toFixed(1)}%</b></div>`),
+    `<div><i style="background:var(--c-debt)"></i><span>信用卡／負債</span><b class="neg">-${pctOf(cardDebt).toFixed(1)}%</b></div>`].join('');
+  const states = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
+  const recent = S.transactions.slice().sort((a, b) => b.txn_at.localeCompare(a.txn_at)).slice(0, 5);
+  const rewTotal = sum(S.cards, c => cycleReward(c, cardState(c).open.end).total);
+  return `
+  <section class="hero2">
+    <div class="hero2-top"><span class="lbl">總資產淨值</span>
+      <span class="sel mini"><select data-range>${[[30, '近一個月'], [90, '近三個月'], [365, '近一年']].map(([v, l]) => `<option value="${v}" ${v === range ? 'selected' : ''}>${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></div>
+    <div class="hero2-num">${money(t.net)}</div>
+    <div class="hero2-chg ${chg >= 0 ? 'pos' : 'neg'}">${svgI(chg >= 0 ? 'up' : 'arrowDown', 'ti')}${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% <span>${range === 30 ? '本月' : range === 90 ? '近三個月' : '今年'}變動</span></div>
+    <div class="area-box">${areaChart(pts)}</div>
+  </section>
+  <div class="tiles">
+    ${tile('bank', '銀行帳戶', t.bankOnly, pctOf(t.bankOnly))}
+    ${tile('card', '信用卡未繳', cardDebt, pctOf(cardDebt), true)}
+    ${tile('chart', '投資資產', t.invest, pctOf(t.invest))}
+    ${tile('box', '其他資產', t.other, pctOf(t.other))}
+  </div>
+  <section class="panel dist"><h4>資產分布</h4><div class="dist-body">${donut(parts, shortMoney(t.gross), '總資產')}<div class="dist-leg">${legend}</div></div></section>
+  ${rewTotal > 0 ? `<button class="rew-strip" data-act="recommend"><span>本期預估回饋</span><b>${money(rewTotal)}</b><small>刷哪張最划算 ›</small></button>` : ''}
+  <h2>接下來的扣款</h2>
+  <section class="panel">${states.length ? states.slice(0, 5).map(({ c, st }) => `<div class="row click" data-act="open-card" data-id="${c.id}">
+      <div class="date-glyph" style="--cc:${esc(c.color || '#b8893a')}"><b>${st.next.date.getDate()}</b><small>${st.next.date.getMonth() + 1} 月</small></div>
+      <div class="grow"><div class="title">${esc(c.name)}</div><div class="meta one">${st.next.days === 0 ? '<span class="warn">今天扣款</span>' : `${st.next.days} 天後扣款`}・${st.next.final ? '帳單已出' : '累計中'}</div></div>
+      <div class="right amt-sm">${money(st.next.amount)}</div></div>`).join('') : `<button class="empty-cta" data-act="${(CFG.presetCards || []).length ? 'preset-cards' : 'add-card'}">新增信用卡</button>`}</section>
+  <h2>最近刷卡</h2>
+  <section class="panel">${recent.map(x => txnRow(x)).join('') || '<button class="empty-cta" data-act="add-txn">記下第一筆刷卡</button>'}</section>`;
+};
+
+/* ---------- 02 帳戶 ---------- */
+VIEWS.bank = () => {
+  const tab = S.accTab || 'bank';
+  const accs = S.accounts.filter(a => accType(a) === tab);
+  const filt = S.accFilter || 'all';
+  const shown = accs.filter(a => filt === 'all' || (filt === 'twd' ? a.currency === 'TWD' : a.currency !== 'TWD'));
+  const total = sum(shown, a => { const v = toTWD(num(a.balance), a.currency); return Number.isFinite(v) ? v : 0; }) + (tab === 'other' ? sum(S.receivables.filter(r => !r.received_at), r => num(r.amount)) : 0);
+  const rows = shown.map(a => `<div class="row click acc" data-act="edit-acc" data-id="${a.id}">
+      ${accIcon(a)}
+      <div class="grow"><div class="title">${esc(a.name)}</div><div class="meta">${esc([a.kind || (tab === 'epay' ? '電子支付' : '活存'), a.note].filter(Boolean).join('・'))}${a.currency !== 'TWD' ? `・${esc(a.currency)}` : ''}</div></div>
+      <div class="right"><div class="amt-sm">${money(num(a.balance), a.currency)}</div>${a.currency !== 'TWD' ? `<div class="meta">≈ ${money(toTWD(num(a.balance), a.currency))}</div>` : ''}</div>
+      ${svgI('chev', 'chev')}</div>`).join('');
+  const logs = S.balance_log.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).filter(l => accs.some(a => a.id === l.account_id)).slice(0, 12).map(l => {
+    const a = S.accounts.find(x => x.id === l.account_id);
+    return `<div class="row"><div class="grow"><div class="title">${esc(l.note || '餘額調整')}</div><div class="meta">${new Date(l.created_at).toLocaleDateString('zh-TW')} · ${esc(a?.name || '')}</div></div>
+      <div class="right amt-sm ${num(l.delta) < 0 ? 'neg' : 'pos'}">${num(l.delta) > 0 ? '+' : ''}${money(num(l.delta), a?.currency)}</div></div>`;
+  }).join('');
+  const label = { bank: '銀行帳戶總額', epay: '電子支付總額', other: '其他資產總額' }[tab];
+  return `${S.missingTables.length ? `<div class="banner warn">應收款／負債的資料表還沒建立：請到 Supabase 執行 README 裡的 SQL。</div>` : ''}
+    <div class="seg-ctl">${ACC_TYPES.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-act="acc-tab" data-t="${k}">${l}</button>`).join('')}</div>
+    <section class="sum-card">
+      <div class="sum-top"><span class="lbl">${label}</span>
+        <span class="sel mini"><select data-accfilter>${[['all', '全部帳戶'], ['twd', '台幣'], ['fx', '外幣']].map(([v, l]) => `<option value="${v}" ${v === filt ? 'selected' : ''}>${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></div>
+      <b>${money(total)}</b>
+      <span class="sum-art">${svgI(tab === 'epay' ? 'wallet' : tab === 'other' ? 'box' : 'bank', 'art')}</span>
+    </section>
+    <section class="list-card">${rows || `<div class="empty">還沒有${ACC_TYPES.find(x => x[0] === tab)[1]}</div>`}</section>
+    <div class="actions"><button class="btn outline" data-act="add-acc">＋ 新增帳戶</button>${S.accounts.length > 1 ? '<button class="btn" data-act="transfer">⇄ 轉帳</button>' : ''}</div>
+    ${tab === 'other' ? recvSection() + liabSection() : ''}
+    ${logs ? `<h2>異動紀錄</h2><section class="panel">${logs}</section>` : ''}`;
+};
+function formAccount(a) {
+  const tab = a ? accType(a) : (S.accTab || 'bank');
+  openForm({
+    title: a ? '編輯帳戶' : '新增帳戶', data: a ? { ...a, type: accType(a) } : { type: tab, currency: 'TWD', balance: 0 },
+    fields: [
+      { k: 'type', label: '分類', type: 'chips', options: ACC_TYPES },
+      { k: 'name', label: '帳戶名稱', req: 1, ph: '例：永豐大戶、LINE Pay' },
+      { k: 'bank', label: '銀行／機構', ph: '例：永豐銀行', half: true },
+      { k: 'kind', label: '帳戶類型', ph: '活存、定存、數位帳戶…', half: true },
+      ...(a ? [] : [{ k: 'balance', label: '目前餘額', type: 'money' }]),
+      { k: 'currency', label: '幣別', type: 'select', options: CURRENCIES, more: true },
+      { k: 'note', label: '備註（顯示在名稱下方）', ph: '例：主要帳戶、自動扣款、2026/05 到期', more: true },
+    ],
+    onSave: async v => { v.type = v.type || 'bank'; if (a) await upd('accounts', a.id, v); else await add('accounts', { ...v, balance: v.balance || 0 }); S.accTab = v.type; },
+    onDelete: a && (async () => {
+      if (S.cards.some(c => c.debit_account_id === a.id)) throw new Error('有信用卡用這個帳戶扣款，請先改掉卡片設定');
+      await del('accounts', a.id);
+    }),
+  });
+}
+
+/* ---------- 05 轉帳／新增紀錄／對帳 ---------- */
+const MONEY_TABS = cur => [['transfer', '轉帳'], ['money-in-out', '新增紀錄'], ['money-set', '對帳']].map(([act, label]) => ({ act, label, on: act === cur }));
+function formTransfer(from) {
+  if (S.accounts.length < 2) { toast('至少要有兩個帳戶才能轉帳'); return; }
+  const opts = S.accounts.map(a => [a.id, `${a.name}（${money(num(a.balance), a.currency)}）`]);
+  const f0 = from?.id || S.accounts[0].id;
+  let confirmStep = false;
+  const form = openForm({
+    title: '帳戶轉帳', tabs: MONEY_TABS('transfer'), submitLabel: '下一步',
+    data: { from: f0, to: S.accounts.find(a => a.id !== f0)?.id, fee: 0 },
+    fields: [
+      { k: 'from', label: '轉出帳戶', type: 'select', options: opts },
+      { type: 'swap', a: 'from', b: 'to' },
+      { k: 'to', label: '轉入帳戶', type: 'select', options: opts },
+      { k: 'amount', label: '轉出金額', type: 'money', req: 1, quick: [1000, 5000, 10000] },
+      { k: 'fee', label: '手續費', type: 'number', hint: '跨行轉帳常見 NT$10–15' },
+      { k: 'note', label: '備註', ph: '例：存到大戶、換美金' },
+      { k: 'to_amount', label: '轉入金額（幣別不同時填實際入帳）', type: 'number', more: true, hint: '留空：同幣別等於轉出金額；不同幣別依即時匯率換算' },
+    ],
+    onSave: async (v, f) => {
+      const A = S.accounts.find(a => a.id === v.from), B = S.accounts.find(a => a.id === v.to);
+      if (!A || !B || A.id === B.id) throw new Error('轉出和轉入要選不同帳戶');
+      if (!(v.amount > 0)) throw new Error('金額要大於 0');
+      const inAmt = v.to_amount != null ? v.to_amount : (A.currency === B.currency ? v.amount : Math.round(fromTWD(toTWD(v.amount, A.currency), B.currency) * 100) / 100);
+      if (!Number.isFinite(inAmt)) throw new Error('抓不到匯率，請在「更多選項」填轉入金額');
+      const fee = num(v.fee);
+      if (!confirmStep) { // 第一步：顯示確認摘要
+        confirmStep = true;
+        const box = document.createElement('div'); box.className = 'confirm-box';
+        box.innerHTML = `<div><span>${esc(A.name)}</span><b class="neg">-${money(v.amount + fee, A.currency)}</b></div><div><span>${esc(B.name)}</span><b class="pos">+${money(inAmt, B.currency)}</b></div>${fee ? `<small>含手續費 ${money(fee, A.currency)}</small>` : ''}`;
+        f.querySelector('.sheet-actions').before(box);
+        f.querySelector('button[type=submit]').textContent = '確認轉帳';
+        f.querySelectorAll('.fgrid, details.more').forEach(x => x.classList.add('dim'));
+        return false;
+      }
+      const aAfter = Math.round((num(A.balance) - v.amount - fee) * 100) / 100;
+      const bAfter = Math.round((num(B.balance) + inAmt) * 100) / 100;
+      const tag = v.note ? `・${v.note}` : '';
+      await upd('accounts', A.id, { balance: aAfter });
+      await add('balance_log', { account_id: A.id, delta: -(v.amount + fee), balance_after: aAfter, note: `轉帳 → ${B.name}${fee ? `（含手續費 ${fee}）` : ''}${tag}` });
+      await upd('accounts', B.id, { balance: bAfter });
+      await add('balance_log', { account_id: B.id, delta: inAmt, balance_after: bAfter, note: `轉帳 ← ${A.name}${tag}` });
+      toast(`已從 ${A.name} 轉 ${money(v.amount, A.currency)} 到 ${B.name}`);
+    },
+  });
+  form.addEventListener('input', () => { if (confirmStep) { confirmStep = false; form.querySelector('.confirm-box')?.remove(); form.querySelector('button[type=submit]').textContent = '下一步'; form.querySelectorAll('.dim').forEach(x => x.classList.remove('dim')); } });
+}
+function formMoney(mode, a0) {
+  if (!S.accounts.length) { formAccount(); return; }
+  const isSet = mode === 'set';
+  openForm({
+    title: isSet ? '對帳' : '新增收支紀錄', tabs: MONEY_TABS(isSet ? 'money-set' : 'money-in-out'),
+    data: { account_id: a0?.id || S.accounts[0].id, mode: isSet ? 'set' : 'in' },
+    note: isSet ? '<p class="meta" style="margin:-4px 0 10px">輸入銀行 App 顯示的實際餘額，差額會記成一筆對帳調整。</p>' : '',
+    fields: [
+      { k: 'account_id', label: '帳戶', type: 'select', options: S.accounts.map(x => [x.id, `${x.name}（${money(num(x.balance), x.currency)}）`]) },
+      ...(isSet ? [] : [{ k: 'mode', label: '類型', type: 'chips', options: [['in', '存入／收入'], ['out', '提出／支出']] }]),
+      { k: 'amount', label: isSet ? '目前實際餘額' : '金額', type: 'money', req: 1, quick: isSet ? null : [1000, 5000, 10000] },
+      { k: 'note', label: '說明', ph: isSet ? '例：月底對帳' : '例：薪水、房租、提款' },
+    ],
+    onSave: async v => {
+      const a = S.accounts.find(x => x.id === v.account_id);
+      const cur = num(a.balance), m = isSet ? 'set' : v.mode;
+      const after = m === 'set' ? v.amount : m === 'in' ? cur + v.amount : cur - v.amount;
+      const delta = Math.round((after - cur) * 100) / 100;
+      await upd('accounts', a.id, { balance: after });
+      await add('balance_log', { account_id: a.id, delta, balance_after: after, note: v.note || (m === 'set' ? '對帳調整' : m === 'in' ? '存入' : '支出') });
+    },
+  });
+}
+function formAdjust(a0) { formMoney('in-out', a0); }
+
+/* ---------- 03 信用卡列表 ---------- */
+function cardRow(c, st) {
+  const n = st.next;
+  const rew = (c.rewards || []).length ? cycleReward(c, st.open.end).total : 0;
+  return `<button class="crow${S.cardOpen === c.id ? ' sel' : ''}" style="--cc:${esc(c.color || '#b8893a')}" data-act="open-card" data-id="${c.id}">
+    <span class="crow-ic">${svgI('card')}</span>
+    <span class="crow-main"><span class="crow-name">${esc(c.name)}</span>
+      <span class="crow-sub">${n.final ? `${md(st.billed.end)} 帳單已出` : `本期累計中・${n.closeDays === 0 ? '今天' : n.closeDays + ' 天後'}結帳`}${rew ? `・回饋約 ${money(rew)}` : ''}</span></span>
+    <span class="crow-r"><b>${money(n.amount)}</b><span class="${n.days <= 3 ? 'warn' : ''}">${n.days === 0 ? '今天扣款' : md(ymd(n.date)) + ' 扣款'}</span></span>
+  </button>`;
+}
+VIEWS.cards = () => {
+  const orphan = S.transactions.filter(t => !t.card_id && !t.settled_cycle);
+  const banner = orphan.length ? `<div class="banner warn">有 ${orphan.length} 筆紀錄對不到卡片，點開指定卡片，再到卡片設定補上「Apple 錢包裡的卡片名稱」。</div><section class="panel" style="margin-bottom:14px">${orphan.map(x => txnRow(x)).join('')}</section>` : '';
+  if (!S.cards.length) {
+    const preset = (CFG.presetCards || []).length;
+    return `${banner}<button class="cc cc-add" style="width:100%" data-act="${preset ? 'preset-cards' : 'add-card'}"><span class="plus">✦</span>${preset ? `加入我的 ${CFG.presetCards.length} 張信用卡` : '新增信用卡'}</button>`;
+  }
+  const open = S.cards.find(c => c.id === S.cardOpen);
+  if (open) return cardDetailView(open);
+  const all = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
+  const dueMonth = monthKey(all[0].st.next.date); // 「本期」＝最近一次要繳款的那個月
+  const isNow = x => monthKey(x.st.next.date) <= dueMonth;
+  const f = S.cardFilter || 'all';
+  const list = all.filter(x => f === 'all' || (f === 'now' ? isNow(x) : !isNow(x)));
+  const due = all.filter(isNow), nearest = all[0];
+  const chip = (k, l, n) => `<button class="${f === k ? 'on' : ''}" data-act="card-filter" data-f="${k}">${l}(${n})</button>`;
+  return `${banner}
+    <section class="sum-card">
+      <div class="sum-top"><span class="lbl">信用卡總覽</span><span class="sum-r"><small>近一筆</small><b>${md(ymd(nearest.st.next.date))}</b><small>${esc(nearest.c.name)}</small></span></div>
+      <b>${money(sum(due, x => x.st.next.amount))}</b>
+      <span class="meta">${nearest.st.next.date.getMonth() + 1} 月要繳 ${due.length} 張卡</span>
+    </section>
+    <div class="pills">${chip('all', '全部', all.length)}${chip('now', '本期', due.length)}${chip('next', '下期', all.length - due.length)}</div>
+    <div class="crows">${list.map(x => cardRow(x.c, x.st)).join('') || '<div class="empty">沒有符合的卡片</div>'}</div>
+    <div class="actions two"><button class="btn outline" data-act="recommend">${svgI('bulb', 'bi')}這筆刷哪張最划算？</button><button class="btn outline" data-act="add-card">＋ 新增信用卡</button></div>
+    <div class="actions"><button class="btn ghost small" data-act="import-txn">匯入帳單明細</button></div>`;
+};
+
+/* ---------- 04 信用卡詳細 ---------- */
+function cardFace(c) {
+  const st = cardState(c), n = st.next;
+  return `<div class="cc" style="--cc:${esc(c.color || '#c9a96e')}">
+    ${constellation(c.id)}
+    <span class="cc-top"><span class="cc-name">${esc(c.name)}</span><svg class="cc-chip" viewBox="0 0 34 26" aria-hidden="true"><rect x=".5" y=".5" width="33" height="25" rx="5"/><path d="M0 9h11M0 17h11M23 9h11M23 17h11M11 0v26M23 0v26"/></svg></span>
+    ${c.last4 ? `<span class="cc-num">•••• ${esc(c.last4)}</span>` : ''}
+    <span class="cc-mid"><b>${money(n.amount)}</b>${(c.rewards || []).length ? `<em class="cc-rew">本期回饋約 ${money(cycleReward(c, st.open.end).total)}</em>` : ''}</span>
+    <span class="cc-bot"><span>${n.final ? `${md(st.billed.end)} 帳單・${md(ymd(n.date))} 扣款` : `${md(st.open.end)} 結帳・${md(ymd(st.open.due))} 扣款`}</span><span>${n.days === 0 ? '今天扣款' : n.days + ' 天後'}</span></span>
+  </div>`;
+}
+function cardDetailView(c) {
+  const st = cardState(c), cy = st.open, bl = st.billed;
+  const acc = S.accounts.find(a => a.id === c.debit_account_id);
+  const debt = sum(unsettled(c.id), billAmt), lim = num(c.credit_limit);
+  const tab = S.cardTab || 'cur';
+  const items = tab === 'cur' ? [...(bl ? bl.items : []), ...cy.items].sort(byTimeDesc) : S.transactions.filter(t => t.card_id === c.id && t.settled_cycle).sort(byTimeDesc);
+  const hist = S.settlements.filter(s => s.card_id === c.id).sort((a, b) => String(b.cycle_end).localeCompare(String(a.cycle_end)));
+  const usedCats = [...new Set(items.map(catOf))];
+  return `<div class="cd-nav"><button class="btn small ghost back" data-act="cards-home">‹ 所有卡片</button>
+      <span>${S.cards.length > 1 ? `<button class="icon-btn ring" data-act="card-step" data-d="-1" aria-label="上一張">${svgI('chev', 'flip')}</button><button class="icon-btn ring" data-act="card-step" data-d="1" aria-label="下一張">${svgI('chev')}</button>` : ''}</span></div>
+    <div class="cd-face">${cardFace(c)}</div>
+    <div class="seg-ctl">${[['cur', '本期'], ['hist', '歷史']].map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-act="card-tab" data-t="${k}">${l}</button>`).join('')}</div>
+    ${tab === 'cur' ? `<div class="info-grid">
+        <div><small>本期區間</small><b>${md(cy.start)} – ${md(cy.end)}</b></div>
+        <div><small>扣款帳戶</small><b class="txt">${acc ? esc(acc.name) : '<span class="warn">未設定</span>'}</b></div>
+        <div><small>已出帳金額</small><b>${bl ? money(bl.total) : '—'}</b></div>
+        <div><small>扣款日</small><b>${md(ymd(st.next.date))}</b></div>
+      </div>
+      ${lim ? `<div class="usage"><div class="meter"><i style="width:${Math.min(100, debt / lim * 100).toFixed(1)}%${debt / lim > .8 ? ';background:var(--danger)' : ''}"></i></div><span>本期已使用 ${Math.round(debt / lim * 100)}%・剩餘額度 ${money(Math.max(0, lim - debt))}</span></div>` : ''}
+      ${bl ? `<button class="btn small outline paid-btn" data-act="paid-bill" data-id="${c.id}">${md(bl.end)} 帳單已經繳了</button>` : ''}`
+      : `<section class="panel">${hist.length ? hist.map(h => `<div class="row"><div class="grow"><div class="title">${md(ymd(dueFor(c, String(h.cycle_end).slice(0, 10))))} 扣款</div><div class="meta">${md(h.cycle_end)} 帳單</div></div><div class="right amt-sm">${money(num(h.amount))}</div></div>`).join('') : '<div class="empty">還沒有扣款紀錄</div>'}</section>`}
+    <div class="qa">
+      <button data-act="add-txn" data-card="${c.id}">${svgI('plus')}<span>新增消費</span></button>
+      <button data-act="add-liab-card" data-card="${c.id}">${svgI('split')}<span>分期設定</span></button>
+      <button data-act="edit-card" data-id="${c.id}">${svgI('gear')}<span>卡片設定</span></button>
+      <button data-act="card-more" data-id="${c.id}">${svgI('more')}<span>更多</span></button>
+    </div>
+    <section class="panel txn-panel">
+      <div class="tp-head"><h4>${tab === 'cur' ? '消費紀錄' : '已扣款消費'}</h4>
+        <button class="icon-btn ring sm" data-act="txn-search" aria-label="搜尋">${svgI('search')}</button>
+        <span class="sel mini"><select data-catfilter>${[['', '全部類別'], ...CATS.filter(x => usedCats.includes(x[0])).map(x => [x[0], x[1]])].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></div>
+      <input class="txn-q" type="search" placeholder="搜尋商家" hidden>
+      <div class="txn-list">${items.map(x => txnRow(x, { showCard: false })).join('') || '<div class="empty">沒有消費紀錄</div>'}</div>
+    </section>
+    ${tab === 'cur' ? rewardPanel(c, st) : ''}`;
+}
+function filterTxnList() {
+  const q = ($('.txn-q')?.value || '').trim().toLowerCase(), cat = $('[data-catfilter]')?.value || '';
+  document.querySelectorAll('.txn-list .txn').forEach(r => { r.hidden = !!((q && !r.dataset.text.includes(q)) || (cat && r.dataset.cat !== cat)); });
+}
+function openCardMore(c) {
+  const st = cardState(c);
+  const m = $('#modal');
+  m.innerHTML = `<div class="sheet"><span class="grab"></span><div class="sheet-head"><h3>${esc(c.name)}</h3><button type="button" class="x" data-close>×</button></div>
+    <div class="menu">
+      ${st.billed ? `<button data-act="paid-bill" data-id="${c.id}">${md(st.billed.end)} 帳單已經繳了</button>` : ''}
+      <button data-act="import-txn">匯入帳單明細</button>
+      <button data-act="recommend">這筆刷哪張最划算？</button>
+      <button data-act="add-liab-card" data-card="${c.id}">新增分期</button>
+      <button data-act="edit-card" data-id="${c.id}">卡片設定</button>
+    </div></div>`;
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) { m.hidden = true; m.innerHTML = ''; } };
+}
+
+/* ---------- 新增信用卡 ---------- */
+function formCard(c) {
+  openForm({
+    title: c ? '信用卡設定' : '新增信用卡', data: c ? { ...c } : { closing_day: 20, fx_fee: 1.5, color: '#b8893a' },
+    fields: [
+      { k: 'bank', label: '發卡銀行', type: 'select', options: [['', '請選擇銀行'], ...BANKS.map(b => [b, b])] },
+      { k: 'name', label: '卡片名稱', req: 1, ph: '例：聯邦 MaiCoin 聯名卡' },
+      { k: 'closing_day', label: '每月結帳日', type: 'number', req: 1, half: true },
+      { k: 'due_day', label: '每月扣款日', type: 'number', half: true, hint: '留空＝結帳日當天' },
+      { k: 'debit_account_id', label: '扣款帳戶', type: 'select', options: accOptions() },
+      { k: 'last4', label: '卡號末四碼（選填）', ph: '3138', half: true },
+      { k: 'credit_limit', label: '信用額度（選填）', type: 'number', half: true },
+      { k: 'color', label: '代表色', type: 'select', options: [['#b8893a', '琥珀金'], ['#4f9a92', '青瓷'], ['#5b72c4', '霧藍'], ['#8a63b8', '薰紫'], ['#c0623f', '赭紅'], ['#5d6378', '石墨']] },
+      { k: 'wallet_name', label: 'Apple 錢包裡的卡片名稱', ph: '捷徑比對用，填一部分即可', more: true },
+      { k: 'fx_fee', label: '國外交易手續費率（%）', type: 'number', more: true, hint: '多數卡 1.5%，免手續費填 0' },
+      { k: 'cycle_start', label: '改結帳日過渡期：本期從哪天開始', type: 'date', more: true },
+      { k: 'first_close', label: '改結帳日後第一次結帳日', type: 'date', more: true },
+    ],
+    onSave: async v => {
+      v.closing_day = Math.max(1, Math.min(31, Math.round(v.closing_day)));
+      v.due_day = v.due_day == null ? null : Math.max(1, Math.min(31, Math.round(v.due_day)));
+      v.debit_account_id = v.debit_account_id || null;
+      v.cycle_start = v.cycle_start || null; v.first_close = v.first_close || null;
+      v.last4 = (v.last4 || '').replace(/\D/g, '').slice(-4) || null;
+      if (!!v.cycle_start !== !!v.first_close) throw new Error('改結帳日的兩個日期要一起填');
+      if (c) {
+        if (v.closing_day !== +c.closing_day || v.due_day !== (c.due_day == null ? null : +c.due_day)) v.last_settled = initialSettled(v);
+        await upd('cards', c.id, v);
+      } else await add('cards', { ...v, rewards: presetRewardsFor(v) || [], last_settled: initialSettled(v) });
+    },
+    onDelete: c && (async () => { await del('cards', c.id); S.cardOpen = null; S.transactions.forEach(t => { if (t.card_id === c.id) t.card_id = null; }); }),
+  });
+}
+
+/* ---------- 新增消費 ---------- */
+function formTxn(t, preset = {}) {
+  const d = t || preset;
+  const card = S.cards.find(c => c.id === (d.card_id || preset.card_id));
+  openForm({
+    title: t ? '編輯消費' : '新增消費',
+    data: { ...d, category: t ? catOf(t) : (d.category || guessCat(d.merchant)), pay: d.pay || (t ? txnPay(t) : d.source === 'shortcut' ? 'applepay' : 'card'),
+      date: ymd(new Date(d.txn_at || Date.now())), overseas: d.fee != null ? num(d.fee) > 0 : (d.currency && d.currency !== 'TWD'), settled: !!d.settled_cycle },
+    fields: [
+      { k: 'date', label: '消費日期', type: 'date', req: 1, half: true },
+      { k: 'amount', label: '消費金額', type: 'money', req: 1, half: true },
+      { k: 'category', label: '消費類別', type: 'chips', options: CATS.map(c => [c[0], c[1], true]) },
+      { k: 'merchant', label: '商家／用途', ph: '例：星巴克' },
+      { k: 'card_id', label: '信用卡', type: 'select', options: cardOptions() },
+      { k: 'currency', label: '幣別', type: 'select', options: CURRENCIES, def: 'TWD', more: true, half: true },
+      { k: 'pay', label: '支付方式', type: 'select', options: PAY_OPTIONS, def: 'card', more: true, half: true },
+      { k: 'amount_twd', label: '台幣入帳金額（外幣時填帳單實際金額）', type: 'number', more: true },
+      { k: 'overseas', label: '海外交易（加收國外交易手續費）', type: 'check', more: true },
+      ...(t ? [{ k: 'settled', label: '已扣款（不再計入未來帳單）', type: 'check', more: true }] : []),
+    ],
+    onSave: async v => {
+      const at = parseYmd(v.date); const old = t ? new Date(t.txn_at) : new Date(); at.setHours(old.getHours(), old.getMinutes());
+      const row = { card_id: v.card_id || null, merchant: v.merchant, amount: v.amount, currency: v.currency || 'TWD', pay: v.pay, category: v.category || null, txn_at: at.toISOString() };
+      row.amount_twd = row.currency === 'TWD' ? v.amount : (v.amount_twd ?? Math.round(toTWD(v.amount, row.currency) * 100) / 100);
+      if (!Number.isFinite(row.amount_twd)) throw new Error('抓不到匯率，請在「更多選項」填台幣金額');
+      const cd = S.cards.find(c => c.id === row.card_id);
+      row.fee = v.overseas && !isFeeRow(row) ? Math.round(Math.abs(row.amount_twd) * feeRate(cd) / 100) * Math.sign(row.amount_twd || 1) : 0;
+      if (t) {
+        if (v.settled && !t.settled_cycle) row.settled_cycle = 'manual';
+        if (!v.settled) row.settled_cycle = null;
+        await upd('transactions', t.id, row);
+      } else {
+        row.source = preset.source || 'manual'; row.card_label = preset.card_label || cd?.name || '';
+        if (cd?.last_settled && ymd(at) <= String(cd.last_settled).slice(0, 10)) { row.settled_cycle = 'past'; toast('這筆落在已扣款的週期，標記為已扣款'); }
+        await add('transactions', row);
+      }
+    },
+    onDelete: t && (() => del('transactions', t.id)),
+  });
+}
+
+/* ---------- 主題設定 ---------- */
+function themeTiles() {
+  const cur = document.documentElement.dataset.theme || 'champagne';
+  const names = { champagne: '香檳金', mist: '霧藍', oat: '燕麥奶茶', forest: '墨綠金' };
+  return `<div class="theme-tiles">${THEMES.map(([k]) => `<button class="tt tt-${k}${k === cur ? ' on' : ''}" data-act="theme" data-theme="${k}" aria-pressed="${k === cur}"><span class="tt-img"></span><span class="tt-name">${names[k]}</span>${k === cur ? '<span class="tt-check">✓</span>' : ''}</button>`).join('')}</div>`;
+}
+
 /* ---------------- events ---------------- */
 document.addEventListener('click', async e => {
   const tabBtn = e.target.closest('.tabs [data-tab]');
@@ -1663,7 +2178,15 @@ document.addEventListener('click', async e => {
       case 'cards-home': S.cardOpen = null; render(); scrollTo(0, 0); break;
       case 'card-step': { const i = S.cards.findIndex(c => c.id === S.cardOpen); S.cardOpen = S.cards[(i + (+el.dataset.d) + S.cards.length) % S.cards.length].id; render(); break; }
       case 'transfer': formTransfer(); break;
-      case 'fab-acc': if (!S.accounts.length) formAccount(); else formAdjust(S.accounts.length === 1 ? S.accounts[0] : null); break;
+      case 'money-in-out': formMoney('in-out'); break;
+      case 'money-set': formMoney('set'); break;
+      case 'acc-tab': S.accTab = el.dataset.t; render(); break;
+      case 'card-filter': S.cardFilter = el.dataset.f; render(); break;
+      case 'card-tab': S.cardTab = el.dataset.t; render(); break;
+      case 'card-more': openCardMore(find('cards')); break;
+      case 'add-liab-card': formLiab(null, { kind: 'installment', card_id: el.dataset.card }); break;
+      case 'txn-search': { const q = $('.txn-q'); q.hidden = !q.hidden; if (!q.hidden) q.focus(); else { q.value = ''; filterTxnList(); } break; }
+      case 'fab-acc': formMoney('in-out'); break;
       case 'add-acc': formAccount(); break;
       case 'edit-acc': formAccount(find('accounts')); break;
       case 'adjust-acc': e.stopPropagation(); formAdjust(find('accounts')); break;
@@ -1693,6 +2216,12 @@ document.addEventListener('click', async e => {
     }
   } catch (err) { toast('出錯了：' + (err.message || err)); console.error(err); }
 });
+document.addEventListener('change', e => {
+  if (e.target.matches('[data-range]')) { S.range = +e.target.value; render(); }
+  else if (e.target.matches('[data-accfilter]')) { S.accFilter = e.target.value; render(); }
+  else if (e.target.matches('[data-catfilter]')) filterTxnList();
+});
+document.addEventListener('input', e => { if (e.target.matches('.txn-q')) filterTxnList(); });
 document.addEventListener('change', async e => {
   if (e.target.dataset.act !== 'import') return;
   try {
