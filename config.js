@@ -3,8 +3,8 @@
 // anon / publishable key 本來就是公開金鑰，放在前端沒問題；資料安全由資料庫的 RLS 保護。
 // 絕對不要把 service_role / secret key 放在這裡。
 window.ASSET_CONFIG = {
-  supabaseUrl: "",      // 例：https://abcdefghijkl.supabase.co
-  supabaseAnonKey: "",  // 例：eyJhbGciOi... 或 sb_publishable_...
+  supabaseUrl: "https://bpunpkpxhqescvzgntve.supabase.co", 
+  supabaseAnonKey: "sb_publishable_-ChzU0gGzm277UPLJHDUiA_YgX4A7lf", 
 
   // 第一次開啟、帳號裡還沒有任何信用卡時，自動建立這些卡片（之後在 App 裡修改即可）
   // closing_day = 每月結帳日，due_day = 每月扣款日（結帳後的下一個該日）
