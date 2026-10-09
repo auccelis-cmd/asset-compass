@@ -751,7 +751,7 @@ VIEWS.overview = () => {
   </section>
   ${S.cards.some(c => (c.rewards || []).length) ? `<button class="rew-strip" data-act="recommend"><span>本期預估回饋</span><b>${money(sum(S.cards, c => cycleReward(c, cardState(c).open.end).total))}</b><small>刷哪張最划算 ›</small></button>` : ''}
   <h2>接下來的扣款</h2>
-  <section class="panel">${upRows || '<button class="empty-cta" data-act="add-card">新增第一張信用卡，扣款日會出現在羅盤外圈</button>'}</section>
+  <section class="panel">${upRows || ((CFG.presetCards || []).length ? `<button class="empty-cta" data-act="preset-cards">加入我的 ${CFG.presetCards.length} 張信用卡</button>` : '<button class="empty-cta" data-act="add-card">新增第一張信用卡，扣款日會出現在羅盤外圈</button>')}</section>
   <h2>最近刷卡</h2>
   <section class="panel">${recent.map(txnRow).join('') || '<button class="empty-cta" data-act="add-txn">記下第一筆刷卡</button>'}</section>`;
 };
@@ -804,6 +804,7 @@ function cardDetail(c) {
 VIEWS.cards = () => {
   const orphan = S.transactions.filter(t => !t.card_id && !t.settled_cycle);
   const banner = orphan.length ? `<div class="banner warn">有 ${orphan.length} 筆捷徑紀錄對不到卡片。點開指定卡片，再到卡片設定補上「Apple 錢包裡的卡片名稱」。</div><section class="panel" style="margin-bottom:14px">${orphan.map(txnRow).join('')}</section>` : '';
+  if (!S.cards.length && (CFG.presetCards || []).length) return `${banner}<div class="cc-track"><button class="cc cc-add" data-act="preset-cards"><span class="plus">✦</span>加入我的 ${CFG.presetCards.length} 張信用卡<small>${CFG.presetCards.map(p => esc(p.name)).join('、')}</small></button></div>`;
   if (!S.cards.length) return `${banner}<div class="cc-track"><button class="cc cc-add" data-act="add-card"><span class="plus">✦</span>新增信用卡<small>設定結帳日、扣款日與扣款帳戶</small></button></div>`;
   S.cardSel = Math.max(0, Math.min(S.cardSel || 0, S.cards.length - 1));
   const faces = S.cards.map(cardFace).join('') + '<button class="cc cc-add" data-act="add-card"><span class="plus">✦</span>新增信用卡</button>';
@@ -856,6 +857,7 @@ VIEWS.settings = () => {
   const themes = THEMES.map(([k, name, c]) => `<button data-act="theme" data-theme="${k}" class="${k === cur ? 'on' : ''}" aria-pressed="${k === cur}">
       <span class="sw">${c.map(x => `<i style="background:${x}"></i>`).join('')}</span><span>${name}</span></button>`).join('');
   return `<h2>主題配色</h2><section class="panel"><div class="theme-grid">${themes}</div></section>
+  ${(CFG.presetCards || []).some(p => !S.cards.some(c => c.name === p.name)) ? `<h2>預設信用卡</h2><section class="panel"><p class="meta" style="margin-top:0">還有 ${CFG.presetCards.filter(p => !S.cards.some(c => c.name === p.name)).map(p => esc(p.name)).join('、')} 沒有建立</p><button class="btn small primary" data-act="preset-cards">補建這些卡片</button></section>` : ''}
   <h2>帳號與模式</h2>
   <section class="panel">
     ${CLOUD ? `<div class="row"><div class="grow"><div class="title">雲端同步</div><div class="meta">${esc(user?.email || '')}</div></div><button class="btn small" data-act="signout">登出</button></div>`
@@ -1132,9 +1134,10 @@ async function seed() {
 /* config.js 裡的 presetCards：第一次開啟、還沒有任何卡片時自動建立 */
 async function addPresetCards(force) {
   const list = CFG.presetCards || [];
+  const seenKey = 'ac_preset_seen_' + (CLOUD ? (user?.id || 'cloud') : 'local'); // 每個帳號分開記
   let seen = [];
-  try { seen = JSON.parse(localStorage.getItem('ac_preset_seen') || '[]'); } catch (_) { }
-  if (localStorage.getItem('ac_preset_done') === '1' && !seen.length) seen = S.cards.map(c => c.name); // 舊版升級
+  try { seen = JSON.parse(localStorage.getItem(seenKey) || '[]'); } catch (_) { }
+  if (!CLOUD && localStorage.getItem('ac_preset_done') === '1' && !seen.length) seen = S.cards.map(c => c.name); // 舊版升級
   const added = [];
   for (const p of list) {
     if (S.cards.some(c => c.name === p.name) || (!force && seen.includes(p.name))) continue;
@@ -1143,7 +1146,7 @@ async function addPresetCards(force) {
   }
   // 舊卡片還沒有回饋設定的，補上建議規則
   for (const c of S.cards) if (c.rewards == null) await upd('cards', c.id, { rewards: presetRewardsFor(c) || [] });
-  try { localStorage.setItem('ac_preset_seen', JSON.stringify([...new Set([...seen, ...list.map(p => p.name)])])); } catch (_) { }
+  try { localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...list.map(p => p.name)])])); } catch (_) { }
   if (added.length) toast(`已新增 ${added.join('、')}，記得到卡片設定選扣款帳戶`, 4500);
 }
 
@@ -1162,6 +1165,7 @@ document.addEventListener('click', async e => {
       case 'fab': openFab(); break;
       case 'theme': applyTheme(el.dataset.theme); render(); break;
       case 'recommend': openRecommend(); break;
+      case 'preset-cards': await addPresetCards(true); render(); break;
       case 'add-rule': formRule(S.cards.find(c => c.id === el.dataset.card)); break;
       case 'edit-rule': formRule(S.cards.find(c => c.id === el.dataset.card), +el.dataset.i); break;
       case 'toggle-rule': {
@@ -1226,7 +1230,7 @@ async function refreshAll(force) {
 async function startApp() {
   $('#auth').hidden = true; $('#app').hidden = false;
   await loadAll();
-  await addPresetCards().catch(e => console.warn('preset', e));
+  await addPresetCards().catch(e => { console.warn('preset', e); toast('預設信用卡建立失敗：' + (e.message || e), 6000); });
   render();
   await loadToken().catch(() => { });
   await loadFX();
