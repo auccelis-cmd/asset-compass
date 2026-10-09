@@ -1296,3 +1296,369 @@ body.fab-open .tabs .fab svg { transform: rotate(45deg) scale(.9); }
 [data-theme="verdant"] .hdate { max-width: 640px; }
 [data-theme="verdant"] .cnode .cn-t, [data-theme="verdant"] .cnode .cn-p { background: rgba(9,16,13,.72); padding: 0 7px; border-radius: 6px; line-height: 1.45; }
 [data-theme="verdant"] .cnode .cn-t { margin-top: 4px; border-radius: 6px 6px 0 0; } [data-theme="verdant"] .cnode .cn-p { border-radius: 0 0 6px 6px; }
+
+/* ================================================================
+ * 星象午夜 ASTRAL：70% 現代金融工具＋20% 精密羅盤＋10% 古典質感
+ * 午夜墨黑 #111B20｜深海松綠 #203D3C｜香檳金 #C5A572
+ * 霧銀藍 #8197AE｜煙燻紫 #80647E｜暖象牙白 #F1E9DB
+ * ================================================================ */
+@font-face { font-family: "Yuji Ledger TC"; src: url("yuji-ledger.woff2") format("woff2"); font-display: swap; unicode-range: U+2E80-9FFF, U+F900-FAFF, U+FF00-FFEF, U+3000-303F; }
+[data-theme="verdant"] {
+  --night: #111B20; --night-2: #152228; --panel: #182A2C; --panel-2: #203D3C; --line: rgba(197,165,114,.22); --line-soft: rgba(241,233,219,.08);
+  --gold: #C5A572; --gold-soft: #8d7752; --accent-text: #D9BE8C; --on-accent: #111B20; --needle: #C5A572;
+  --text: #F1E9DB; --muted: #A9B0AE; --faint: #75807F; --danger: #C98577; --ok: #7FB59B;
+  --c-bank: #8197AE; --c-stock: #6FA58C; --c-crypto: #C5A572; --c-recv: #80647E; --c-debt: #B9776A; --c-liab: #A86B60;
+  --card-1: #203D3C; --card-2: #16292B; --card-text: #F1E9DB; --card-sub: #B9BDB5; --chip-1: #D8BE8C; --chip-2: #9C8152;
+  --glass: #182A2C; --gline: rgba(197,165,114,.18);
+  --edge: none; --edge-soft: none;
+  --title: "Yuji Ledger TC", "Yuji Syuku", "Noto Serif TC", "Songti TC", serif;
+  --serif-tc: var(--title);
+  --num: "Noto Serif TC", "Noto Serif CJK TC", Georgia, serif;
+}
+/* 背景：純午夜墨黑，只留一抹極淡的松綠光 */
+html[data-theme="verdant"] body { background: #111B20 !important; }
+html[data-theme="verdant"] body::before { background: radial-gradient(80% 40% at 50% 0%, rgba(32,61,60,.45), transparent 70%), #111B20 !important; }
+/* 頁首 */
+[data-theme="verdant"] .top { background: rgba(17,27,32,.94); backdrop-filter: none; -webkit-backdrop-filter: none; }
+[data-theme="verdant"] .brand { font-family: var(--title); font-weight: 400 !important; letter-spacing: .12em; color: #F1E9DB; }
+[data-theme="verdant"] .brand .bt small { font-family: "Cormorant Garamond", serif; font-weight: 600; color: #C5A572; letter-spacing: .3em; }
+[data-theme="verdant"] .hdate { font-family: "Cormorant Garamond", var(--num); font-weight: 600; font-size: 14px; color: #A9B0AE; }
+[data-theme="verdant"] .toptabs { border-bottom: 1px solid rgba(241,233,219,.08); }
+[data-theme="verdant"] .toptabs button { font-family: var(--title); font-weight: 400; color: #A9B0AE; letter-spacing: .16em; }
+[data-theme="verdant"] .toptabs button.on { color: #111B20; background: #C5A572 !important; border-color: #C5A572 !important; box-shadow: none; }
+/* 標題字：Yuji（單一字重，不加粗） */
+[data-theme="verdant"] :is(h2, .fold-t, .crow-name, .cc-name, .inv-row .grow b, .sheet h3, .tt-name, .seg-ctl button, .cn-t, .lbl, .vc-l, .ver-trend h4, .fab-grid b, .sum-top .lbl, .cd-nav .back, .qa button span) { font-family: var(--title) !important; font-weight: 400 !important; }
+[data-theme="verdant"] h2 { color: #F1E9DB; letter-spacing: .14em; font-size: 16px; }
+[data-theme="verdant"] h2::before { background: #C5A572; }
+/* 面板：實色、細線、輕陰影，沒有發光 */
+[data-theme="verdant"] :is(.panel, .fold, .sum-card, .hero2, .dash, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip, .info-grid div, .seg-ctl) {
+  background: #182A2C !important; border: 1px solid rgba(241,233,219,.07) !important; border-radius: 16px !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 6px 16px rgba(0,0,0,.22) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+}
+[data-theme="verdant"] :is(.dash, .sum-card, .hero2) { background: linear-gradient(180deg, #203D3C, #1A3132) !important; border: 1px solid rgba(197,165,114,.2) !important; }
+[data-theme="verdant"] .dash { border-radius: 22px !important; }
+[data-theme="verdant"] :is(.crow, .inv-row, .tile):hover, [data-theme="verdant"] .inv-row.on, [data-theme="verdant"] .crow.sel {
+  background: #1D3436 !important; border-color: rgba(197,165,114,.45) !important; box-shadow: 0 6px 16px rgba(0,0,0,.22) !important;
+}
+[data-theme="verdant"] .crow { border-left: 3px solid var(--cc) !important; }
+[data-theme="verdant"] .crow-ic { background: rgba(17,27,32,.6); border: 1px solid rgba(241,233,219,.08); }
+[data-theme="verdant"] .row { border-color: rgba(241,233,219,.07); }
+[data-theme="verdant"] .acc-ic { border-radius: 12px; background: hsl(var(--h) 26% 42%); box-shadow: none; }
+[data-theme="verdant"] .sum-art { opacity: .1; }
+/* 星盤：保留精密刻度，拿掉光暈與軌道 */
+[data-theme="verdant"] .vdial { filter: none; }
+[data-theme="verdant"] .vdial > circle:first-of-type { display: none; }
+[data-theme="verdant"] .vdial .vorbit { display: none; }
+[data-theme="verdant"] .vdial .vstars circle { opacity: .3; }
+[data-theme="verdant"] .vdial .vrose { opacity: .28; }
+[data-theme="verdant"] .vdial .vtrack { stroke: rgba(17,27,32,.7); stroke-width: 10; }
+[data-theme="verdant"] .vdial .vr { stroke-width: 8; filter: none; }
+[data-theme="verdant"] .vc-l { color: #A9B0AE; font-size: 14px; }
+[data-theme="verdant"] .vc-n { color: #F1E9DB; text-shadow: none; }
+[data-theme="verdant"] .vc-c.pos { color: #7FB59B; } [data-theme="verdant"] .vc-c.neg { color: #C98577; }
+/* 四個資產節點：扁平色圓＋細金邊 */
+[data-theme="verdant"] .cn-ic { border: 1.5px solid rgba(197,165,114,.7) !important; box-shadow: 0 0 0 3px #1A3132, 0 4px 10px rgba(0,0,0,.3) !important; width: 50px; height: 50px; }
+[data-theme="verdant"] .cnode.nw .cn-ic { background: #8197AE !important; }
+[data-theme="verdant"] .cnode.ne .cn-ic { background: #5F9680 !important; }
+[data-theme="verdant"] .cnode.sw .cn-ic { background: #B9776A !important; }
+[data-theme="verdant"] .cnode.se .cn-ic { background: #80647E !important; }
+[data-theme="verdant"] .cnode .cn-t, [data-theme="verdant"] .cnode .cn-p { background: #1A3132; text-shadow: none; }
+[data-theme="verdant"] .cn-t { font-size: 13.5px; } [data-theme="verdant"] .cn-p { color: #F1E9DB; }
+[data-theme="verdant"] .cnode.sw .cn-p { color: #D8988A; }
+/* 信用卡卡面：松綠實色＋細金線 */
+[data-theme="verdant"] .cc { border: 1px solid rgba(197,165,114,.4); background: radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--cc) 18%, transparent), transparent 60%), linear-gradient(140deg, #24443F, #152829); box-shadow: 0 10px 24px rgba(0,0,0,.35); }
+[data-theme="verdant"] .cc-sky polyline { stroke: #C5A572; opacity: .6; stroke-width: 1; }
+[data-theme="verdant"] .cc-sky circle { fill: #D9BE8C; opacity: .7; }
+[data-theme="verdant"] .cc-name { color: #F1E9DB; }
+/* 投資圖示 */
+[data-theme="verdant"] .inv-ic { border: 0; box-shadow: none; }
+[data-theme="verdant"] .inv-ic.stocks { background: #5F9680 !important; }
+[data-theme="verdant"] .inv-ic.crypto { background: #B8975F !important; }
+/* 按鈕與控制項：金色只給重要操作 */
+[data-theme="verdant"] :is(.pills, .rchips) button { border: 1px solid rgba(241,233,219,.1) !important; background: transparent !important; color: #A9B0AE; box-shadow: none; }
+[data-theme="verdant"] :is(.pills, .rchips) button.on { background: #203D3C !important; border-color: rgba(197,165,114,.55) !important; color: #D9BE8C !important; box-shadow: none; }
+[data-theme="verdant"] .seg-ctl button.on { background: #C5A572; color: #111B20; }
+[data-theme="verdant"] .btn.primary { background: #C5A572; color: #111B20; border: 1px solid #C5A572; box-shadow: none; }
+[data-theme="verdant"] .btn.outline, [data-theme="verdant"] .btn.ghost { border: 1px solid rgba(197,165,114,.35); background: transparent; color: #D9BE8C; }
+[data-theme="verdant"] .qa button .i { background: #182A2C; border: 1px solid rgba(197,165,114,.35); }
+[data-theme="verdant"] :is(input, select, textarea) { background: #111B20; border: 1px solid rgba(241,233,219,.12); }
+[data-theme="verdant"] :is(input, select, textarea):focus { border-color: #C5A572; }
+[data-theme="verdant"] .sheet { background: #182A2C !important; border: 1px solid rgba(241,233,219,.07); box-shadow: 0 -10px 30px rgba(0,0,0,.45); }
+[data-theme="verdant"] .fab-grid button { background: #111B20; border: 1px solid rgba(241,233,219,.08); }
+[data-theme="verdant"] .modal { background: rgba(8,12,14,.6); }
+/* 底部導覽＋實金記帳鈕 */
+[data-theme="verdant"] .tabs { background: #182A2C !important; border: 1px solid rgba(241,233,219,.08) !important; box-shadow: 0 8px 24px rgba(0,0,0,.4) !important; backdrop-filter: none !important; }
+[data-theme="verdant"] .tabs .fab { border: 0 !important; background: #C5A572 !important; box-shadow: 0 0 0 4px #111B20, 0 0 0 5px rgba(197,165,114,.45), 0 6px 16px rgba(0,0,0,.45) !important; }
+[data-theme="verdant"] .tabs .fab svg { fill: #111B20; filter: none; }
+html[data-theme="verdant"] .fab-radial .fr-btn .i { background: #182A2C; border: 1px solid rgba(197,165,114,.55); box-shadow: 0 6px 14px rgba(0,0,0,.45); color: #D9BE8C; }
+html[data-theme="verdant"] .fab-radial .fr-btn { font-family: "Yuji Ledger TC", "Noto Serif TC", serif; font-weight: 400; }
+html[data-theme="verdant"] .fab-radial .fr-more { background: #182A2C; border-color: rgba(197,165,114,.4); font-family: "Yuji Ledger TC", "Noto Serif TC", serif; font-weight: 400; }
+/* 主題卡 */
+.tt-verdant { background: #182A2C; }
+.tt-verdant .tt-img { background: radial-gradient(70% 60% at 50% 40%, #203D3C, #111B20); }
+.tt-verdant .tt-orb { background: #111B20; box-shadow: inset 0 0 0 2px #C5A572; }
+[data-theme="verdant"] .vdial .vt { stroke: rgba(197,165,114,.35); } [data-theme="verdant"] .vdial .vt.m { stroke: rgba(197,165,114,.6); } [data-theme="verdant"] .vdial .vt.M { stroke: #C5A572; stroke-width: 1.4; }
+
+
+/* ================================================================
+ * 星圖秘境 STARMAP：照設計稿——星空羅盤、葉影金線、鎏金描邊（複製夜苑基礎）
+ * ================================================================ */
+/* ================================================================
+ * 夜苑鎏金 VERDANT：墨綠黑底＋葉影、玻璃面板、金色描邊
+ * ================================================================ */
+[data-theme="starmap"] {
+  --night: #0b1512; --night-2: #101d19; --panel: rgba(22,34,30,.78); --panel-2: rgba(30,46,40,.85); --line: rgba(201,168,106,.28); --line-soft: rgba(201,168,106,.14);
+  --gold: #cfae6e; --gold-soft: #8c7449; --accent-text: #e6c98f; --on-accent: #1a160d; --needle: #d9b878;
+  --text: #f1ece0; --muted: #b9b5a6; --faint: #868a7e; --danger: #e48a7e; --ok: #8fd0a4;
+  --c-bank: #4f9c7a; --c-stock: #c9634e; --c-crypto: #d8a845; --c-recv: #7d8b99; --c-debt: #c0584a; --c-liab: #a8504a;
+  --card-1: #22322c; --card-2: #0f1a17; --card-text: #f4ecd9; --card-sub: #c4b998; --chip-1: #e3c88a; --chip-2: #9a7c45;
+  --glow: #183029; --star: #cfae6e; --shadow: 0,0,0; --mtn1: #35584a; --mtn2: #2a4a3e; --mtn3: #1d3530;
+  --glass: linear-gradient(160deg, rgba(34,50,44,.74), rgba(14,23,20,.86));
+  --gline: rgba(207,174,110,.26);
+  color-scheme: dark;
+}
+html[data-theme="starmap"] body { background: #0b1512 !important; }
+html[data-theme="starmap"] body::before {
+  display: block; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 1; mix-blend-mode: normal;
+  background: radial-gradient(70% 45% at 50% 30%, rgba(40,70,58,.25), transparent 70%), linear-gradient(rgba(8,14,12,.35), rgba(8,14,12,.35)), url("ver-bg.webp") center / cover no-repeat, #0b1512 !important;
+}
+[data-theme="starmap"] #app::before { display: none; }
+
+/* 頁首：品牌＋日期＋上方分頁 */
+[data-theme="starmap"] .top { background: linear-gradient(rgba(10,18,15,.92), rgba(10,18,15,.7)); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 0; }
+[data-theme="starmap"] .brand { color: #f1e6cc; }
+[data-theme="starmap"] .brand .bt small { color: #b9a477; letter-spacing: .26em; }
+[data-theme="starmap"] .brand .mark { stroke: var(--gold); }
+.hdate { display: none; }
+[data-theme="starmap"] .hdate { display: block; font-family: var(--num); font-size: 12.5px; color: #cfc6ad; letter-spacing: .06em; margin: -4px 0 0 2px; padding: 0 16px; }
+.toptabs { display: none; }
+[data-theme="starmap"] .toptabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 10px 12px 2px; padding: 4px; border-bottom: 1px solid var(--gline); }
+.toptabs button { border: 1px solid transparent; background: none; color: #bdb7a5; font-family: var(--serif-tc); font-weight: 600; font-size: 15px; letter-spacing: .12em; padding: 7px 0; border-radius: 99px; cursor: pointer; }
+.toptabs button.on { color: #f1dcab; border-color: rgba(207,174,110,.6); background: linear-gradient(180deg, rgba(60,70,50,.55), rgba(30,40,32,.65)); box-shadow: inset 0 1px 0 rgba(255,240,200,.12), 0 0 14px rgba(207,174,110,.15); }
+[data-theme="starmap"] .lib-head, [data-theme="starmap"] .lib-card { display: none !important; }
+
+/* 玻璃面板 */
+[data-theme="starmap"] :is(.panel, .fold, .sum-card, .hero2, .dash, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip) {
+  background: var(--glass) !important; border: 1px solid var(--gline) !important; border-radius: 16px !important;
+  box-shadow: inset 0 1px 0 rgba(255,245,220,.06), 0 10px 26px rgba(0,0,0,.35) !important;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+[data-theme="starmap"] .crows, [data-theme="starmap"] .inv-rows { display: grid; gap: 10px; background: none; border: 0; padding: 0; }
+[data-theme="starmap"] .crow { border-left: 1px solid var(--gline) !important; padding: 14px 14px 14px 12px; }
+[data-theme="starmap"] .crow.sel, [data-theme="starmap"] .crow:first-child { }
+[data-theme="starmap"] :is(.crow, .inv-row, .tile):hover, [data-theme="starmap"] .inv-row.on {
+  border-color: rgba(222,190,125,.75) !important; box-shadow: 0 0 0 1px rgba(222,190,125,.25), 0 0 22px rgba(207,174,110,.18), 0 10px 26px rgba(0,0,0,.35) !important;
+}
+[data-theme="starmap"] .crow-ic { width: 38px; height: 38px; border-radius: 10px; color: var(--cc); background: color-mix(in srgb, var(--cc) 14%, rgba(10,18,15,.8)); border: 1px solid color-mix(in srgb, var(--cc) 35%, transparent); }
+[data-theme="starmap"] .info-grid { gap: 10px !important; border: 0; background: none; }
+[data-theme="starmap"] .info-grid div { background: var(--glass) !important; border: 1px solid var(--gline) !important; border-radius: 12px !important; }
+[data-theme="starmap"] .row { border-color: rgba(207,174,110,.12); }
+[data-theme="starmap"] h2 { color: #efe2c2; letter-spacing: .1em; }
+[data-theme="starmap"] h2::before { content: ""; width: 5px; height: 5px; background: var(--gold); transform: rotate(45deg); }
+[data-theme="starmap"] h2::after { display: none; }
+[data-theme="starmap"] .fold-t { color: #f1e6cc; }
+
+/* 銀行帳戶圖示：亮色圓角方塊 */
+[data-theme="starmap"] .acc-ic { border-radius: 12px; width: 42px; height: 42px; background: linear-gradient(145deg, hsl(var(--h) 55% 52%), hsl(var(--h) 60% 32%)); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 4px 10px rgba(0,0,0,.35); }
+
+/* 總覽羅盤 */
+[data-theme="starmap"] .dash { padding-top: 14px; background: radial-gradient(80% 60% at 50% 55%, rgba(50,80,66,.45), transparent 70%), var(--glass) !important; }
+[data-theme="starmap"] .dash-head .lbl { color: #cfc6ad; letter-spacing: .3em; }
+[data-theme="starmap"] .dash-num { color: #f6eedb; }
+[data-theme="starmap"] .compass2 { filter: drop-shadow(0 0 18px rgba(207,174,110,.25)); }
+[data-theme="starmap"] .compass2 .cbase { fill: rgba(16,30,26,.9); stroke: #d4b373; stroke-width: 1.6; }
+[data-theme="starmap"] .compass2 .rc { fill: #13231e; }
+[data-theme="starmap"] .compass2 .rs1.a { fill: #e0c385; } [data-theme="starmap"] .compass2 .rs1.b { fill: #94763f; }
+[data-theme="starmap"] .compass2 .rs2.a { fill: #b8995d; opacity: .9; } [data-theme="starmap"] .compass2 .rs2.b { fill: #5d4a28; opacity: .9; }
+[data-theme="starmap"] .compass2 .rs1, [data-theme="starmap"] .compass2 .rs2 { stroke: #3a2e18; }
+[data-theme="starmap"] .compass2 .cr { opacity: .9; }
+[data-theme="starmap"] .cn-ic { width: 50px; height: 50px; border: 2px solid #d4b373; box-shadow: 0 0 14px rgba(207,174,110,.35), 0 6px 14px rgba(0,0,0,.5), inset 0 2px 4px rgba(255,255,255,.35), inset 0 -6px 10px rgba(0,0,0,.35) !important; color: #fff; }
+[data-theme="starmap"] .cnode.nw .cn-ic { background: radial-gradient(circle at 35% 28%, #7ccaa6, #2f7a5a 60%, #1c4a37) !important; }
+[data-theme="starmap"] .cnode.ne .cn-ic { background: radial-gradient(circle at 35% 28%, #8fb3a6, #3e6a5e 60%, #23423a) !important; }
+[data-theme="starmap"] .cnode.sw .cn-ic { background: radial-gradient(circle at 35% 28%, #e08a78, #a2402f 60%, #5e2018) !important; }
+[data-theme="starmap"] .cnode.se .cn-ic { background: radial-gradient(circle at 35% 28%, #b7c0cc, #6b7684 60%, #3a424d) !important; }
+[data-theme="starmap"] .cn-t { color: #f1e6cc; font-weight: 700; }
+[data-theme="starmap"] .cn-p { color: #e6dcc2; font-weight: 600; }
+[data-theme="starmap"] .scenery, [data-theme="starmap"] .explore { display: none; }
+.ver-trend { display: none; }
+[data-theme="starmap"] .ver-trend { display: block; margin-top: 12px; }
+[data-theme="starmap"] .ver-trend .tp-head { display: flex; justify-content: space-between; align-items: center; }
+[data-theme="starmap"] .ver-trend h4 { margin: 0; font-family: var(--serif-tc); font-size: 16px; color: #f1e6cc; }
+
+/* 信用卡卡面：深色玻璃＋金邊＋金色走勢線 */
+[data-theme="starmap"] .cc {
+  border-radius: 18px; border: 1px solid rgba(222,190,125,.6);
+  background: radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--cc) 30%, transparent), transparent 60%), linear-gradient(140deg, rgba(48,62,54,.95), rgba(14,22,19,.97));
+  box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 0 26px rgba(207,174,110,.18), 0 16px 34px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,240,210,.18);
+  outline: 0;
+}
+[data-theme="starmap"] .cc::after { display: none; }
+[data-theme="starmap"] .cc-sky { display: block; opacity: .9; }
+[data-theme="starmap"] .cc-sky polyline { stroke: #e2c486; opacity: .75; stroke-width: 1.2; }
+[data-theme="starmap"] .cc-sky circle { fill: #f0d69a; }
+[data-theme="starmap"] .cc-name { color: #f2e1b8; }
+[data-theme="starmap"] .cc-mid b { color: #fbf3df; }
+
+/* 膠囊、分段、區間：金框膠囊 */
+[data-theme="starmap"] :is(.pills, .rchips) button { border: 1px solid rgba(207,174,110,.28) !important; background: rgba(16,26,22,.7) !important; border-radius: 99px; color: #bdb7a5; }
+[data-theme="starmap"] :is(.pills, .rchips) button.on { border-color: rgba(222,190,125,.8) !important; color: #f1dcab !important; background: linear-gradient(180deg, rgba(70,72,48,.6), rgba(34,42,32,.7)) !important; box-shadow: 0 0 12px rgba(207,174,110,.2); }
+[data-theme="starmap"] .seg-ctl { background: rgba(14,22,19,.75); border: 1px solid var(--gline); border-radius: 12px; padding: 4px; }
+[data-theme="starmap"] .seg-ctl button { border-radius: 9px; }
+[data-theme="starmap"] .seg-ctl button.on { background: linear-gradient(180deg, #d9bd7f, #a9864a); color: #1a160d; box-shadow: none; }
+[data-theme="starmap"] .btn { border-radius: 12px; }
+[data-theme="starmap"] .btn.primary { background: linear-gradient(180deg, #e2c78a, #a9864a); color: #1a160d; border: 1px solid #ecd59f; box-shadow: 0 4px 16px rgba(207,174,110,.25), inset 0 1px 0 rgba(255,245,215,.6); }
+[data-theme="starmap"] .btn.outline, [data-theme="starmap"] .btn.ghost { border: 1px solid rgba(207,174,110,.45); background: rgba(16,26,22,.6); border-radius: 99px; color: #ead2a0; }
+[data-theme="starmap"] .qa button .i { background: radial-gradient(circle at 35% 30%, #2a3e36, #101b17); border: 1px solid rgba(222,190,125,.6); }
+[data-theme="starmap"] .inv-ic { border: 1.5px solid rgba(222,190,125,.7); box-shadow: inset 0 2px 4px rgba(255,255,255,.3), inset 0 -5px 8px rgba(0,0,0,.3), 0 4px 10px rgba(0,0,0,.4); }
+
+/* 表單抽屜 */
+[data-theme="starmap"] .modal { background: rgba(4,8,7,.62); }
+[data-theme="starmap"] .sheet { background: linear-gradient(170deg, rgba(30,44,38,.97), rgba(12,20,17,.98)) !important; border: 1px solid var(--gline); border-bottom: 0; border-radius: 22px 22px 0 0 !important; box-shadow: 0 -16px 40px rgba(0,0,0,.6); }
+[data-theme="starmap"] .sheet h3 { color: #f1e6cc; }
+[data-theme="starmap"] :is(input, select, textarea) { background: rgba(10,18,15,.85); border: 1px solid rgba(207,174,110,.3); border-radius: 10px; color: var(--text); }
+[data-theme="starmap"] .fab-grid button { background: var(--glass); border: 1px solid var(--gline); border-radius: 14px; }
+
+/* 底部導覽＋金圈記帳鈕 */
+[data-theme="starmap"] .tabs { background: linear-gradient(180deg, rgba(26,38,33,.92), rgba(12,20,17,.95)) !important; border: 1px solid var(--gline) !important; border-radius: 22px !important; box-shadow: 0 12px 30px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,245,220,.06) !important; backdrop-filter: blur(12px); }
+[data-theme="starmap"] .tabs button.on { color: #f1dcab; }
+[data-theme="starmap"] .tabs .fab {
+  border-radius: 50% !important; border: 2px solid #d9b878 !important;
+  background: radial-gradient(circle at 50% 40%, #2e3a2c, #141c17 70%) !important;
+  box-shadow: 0 0 0 4px rgba(10,18,15,.9), 0 0 0 5px rgba(217,184,120,.55), 0 0 26px rgba(217,184,120,.35), 0 8px 18px rgba(0,0,0,.6) !important;
+  transition: transform .2s;
+}
+[data-theme="starmap"] .tabs .fab svg { fill: #ecd29a; filter: drop-shadow(0 0 6px rgba(236,210,154,.5)); transition: transform .25s; }
+body.fab-open .tabs .fab svg { transform: rotate(45deg) scale(.9); }
+
+/* 放射選單 */
+.fab-radial { position: fixed; inset: 0; z-index: 5; background: rgba(4,8,7,.55); }
+.fab-radial .fr-btn { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 40px); width: 72px; margin-left: -36px; display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; cursor: pointer; color: #f1e6cc; font-family: var(--serif-tc); font-weight: 700; font-size: 13px; transform: translate(0, 0); opacity: 0; transition: transform .28s cubic-bezier(.2,.9,.3,1.2), opacity .2s; }
+.fab-radial .fr-btn .i { width: 52px; height: 52px; padding: 14px; border-radius: 50%; color: #ecd29a; background: radial-gradient(circle at 35% 30%, #2c3f36, #111b17); border: 1.5px solid rgba(222,190,125,.75); box-shadow: 0 0 14px rgba(207,174,110,.3), 0 6px 14px rgba(0,0,0,.5); }
+.fab-radial.show .fr-btn { opacity: 1; transform: translate(var(--x), var(--y)); }
+.fab-radial .fr-more { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 250px); padding: 8px 18px; border-radius: 99px; border: 1px solid rgba(222,190,125,.5); background: rgba(16,26,22,.85); color: #ead2a0; font-family: var(--serif-tc); font-weight: 600; cursor: pointer; opacity: 0; transition: opacity .2s .1s; }
+.fab-radial.show .fr-more { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .fab-radial .fr-btn, .fab-radial .fr-more { transition: none; } }
+
+/* 主題卡 */
+.tt-starmap { background: #16241f; }
+.tt-starmap .tt-img { background: radial-gradient(60% 50% at 20% 20%, #3c5a40 0 40%, transparent 41%), radial-gradient(50% 45% at 85% 85%, #34503a 0 40%, transparent 41%), linear-gradient(#1a2b25, #0b1512); }
+.tt-starmap .tt-orb { background: radial-gradient(circle at 35% 30%, #2e3a2c, #141c17); box-shadow: 0 0 12px #d9b87866, inset 0 0 0 2px #d9b878; }
+.tt-starmap .tt-name { color: #f1e6cc; } .tt-starmap .tt-name small, .tt-starmap .tt-desc { color: #b9b5a6; }
+[data-theme="starmap"] { --c-stock: #6e9fb2; }
+[data-theme="starmap"] .inv-ic.stocks { background: radial-gradient(circle at 35% 30%, #e48a72, #b04a36 60%, #6a2618) !important; }
+[data-theme="starmap"] .inv-ic.crypto { background: radial-gradient(circle at 35% 30%, #f0cd7a, #c18f2e 60%, #6e4f14) !important; }
+.fab-radial .fr-more { bottom: calc(env(safe-area-inset-bottom) + 286px); }
+
+/* ===== 夜苑 v2：金屬描邊、星盤、桌機寬度 ===== */
+[data-theme="starmap"] {
+  --edge: linear-gradient(135deg, rgba(246,222,160,.85), rgba(120,92,44,.55) 30%, rgba(214,180,112,.7) 55%, rgba(90,68,32,.45) 80%, rgba(236,206,140,.8));
+  --edge-soft: linear-gradient(135deg, rgba(246,222,160,.5), rgba(120,92,44,.25) 35%, rgba(214,180,112,.4) 60%, rgba(90,68,32,.2) 85%, rgba(236,206,140,.45));
+  --glass: linear-gradient(165deg, rgba(36,56,49,.82), rgba(16,27,23,.9) 55%, rgba(11,19,16,.94));
+}
+/* 金屬漸層邊框（padding-box 玻璃＋border-box 金邊） */
+[data-theme="starmap"] :is(.panel, .fold, .sum-card, .hero2, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip, .info-grid div, .seg-ctl) {
+  border: 1px solid transparent !important;
+  background: var(--glass) padding-box, var(--edge-soft) border-box !important;
+  box-shadow: inset 0 1px 0 rgba(255,240,205,.08), 0 0 0 .5px rgba(0,0,0,.6), 0 12px 28px rgba(0,0,0,.45) !important;
+}
+[data-theme="starmap"] :is(.dash, .sum-card, .hero2) {
+  background: radial-gradient(90% 60% at 50% 40%, rgba(48,84,70,.4), transparent 70%) padding-box, var(--glass) padding-box, var(--edge) border-box !important;
+  box-shadow: inset 0 1px 0 rgba(255,240,205,.12), 0 0 30px rgba(207,174,110,.12), 0 16px 36px rgba(0,0,0,.5) !important;
+  border: 1.2px solid transparent !important;
+}
+[data-theme="starmap"] .dash { border-radius: 26px !important; padding: 16px 10px 22px; }
+[data-theme="starmap"] :is(.crow, .inv-row, .tile):hover, [data-theme="starmap"] .inv-row.on, [data-theme="starmap"] .crow.sel {
+  background: radial-gradient(120% 120% at 0% 0%, rgba(207,174,110,.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important;
+  box-shadow: 0 0 22px rgba(222,190,125,.22), inset 0 1px 0 rgba(255,240,205,.14), 0 12px 28px rgba(0,0,0,.45) !important;
+}
+/* 星盤 */
+[data-theme="starmap"] .dash-head { display: none; }
+[data-theme="starmap"] .dial-box { width: min(100%, 360px); margin: 26px auto 40px; }
+.vdial { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 24px rgba(0,0,0,.6)); }
+.vdial .vt { stroke: rgba(226,192,124,.45); stroke-width: .7; } .vdial .vt.m { stroke: rgba(236,206,140,.7); stroke-width: 1; } .vdial .vt.M { stroke: #ecd08f; stroke-width: 1.8; }
+.vdial .vorbit ellipse { fill: none; stroke: rgba(226,192,124,.22); stroke-width: .8; }
+.vdial .vtrack { fill: none; stroke: rgba(0,0,0,.45); stroke-width: 12; }
+.vdial .vr { fill: none; stroke-width: 9; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(0,0,0,.6)); }
+.vdial .vr.debt { stroke: var(--c-debt); stroke-width: 3; }
+.vdial .vstars circle { fill: #f1d9a2; opacity: .55; }
+.vcenter { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; width: 50%; text-align: center; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.vc-l { font-family: var(--serif-tc); font-weight: 700; font-size: 15px; letter-spacing: .3em; color: #e2d6b8; padding-left: .3em; }
+.vc-n { font-family: var(--num); font-weight: 700; font-size: clamp(19px, 6.4vw, 26px); color: #fbf3df; line-height: 1.25; white-space: nowrap; text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+.vc-c { font-weight: 700; font-size: 14px; margin-top: 2px; } .vc-c.pos { color: #8fd8a8; } .vc-c.neg { color: #f09a8a; }
+.vc-s { font-size: 11.5px; color: #bfb7a0; font-weight: 600; }
+/* 四個資產圓球坐在外圈上：上／左／右／下 */
+[data-theme="starmap"] .cnode { width: 76px; transform: translate(-50%, -27px); z-index: 2; }
+[data-theme="starmap"] .cnode.nw { left: 50% !important; top: 3% !important; right: auto !important; bottom: auto !important; }
+[data-theme="starmap"] .cnode.ne { left: 4% !important; top: 50% !important; right: auto !important; bottom: auto !important; }
+[data-theme="starmap"] .cnode.sw { left: 96% !important; top: 50% !important; right: auto !important; bottom: auto !important; }
+[data-theme="starmap"] .cnode.se { left: 50% !important; top: 97% !important; right: auto !important; bottom: auto !important; }
+[data-theme="starmap"] .cn-ic { width: 54px; height: 54px; border: 3px solid transparent !important; }
+[data-theme="starmap"] .cnode.nw .cn-ic { background: radial-gradient(circle at 35% 28%, #8edcb6, #2f8460 55%, #174632) padding-box, var(--edge) border-box !important; }
+[data-theme="starmap"] .cnode.ne .cn-ic { background: radial-gradient(circle at 35% 28%, #a6d0c2, #3f7466 55%, #1e3e36) padding-box, var(--edge) border-box !important; }
+[data-theme="starmap"] .cnode.sw .cn-ic { background: radial-gradient(circle at 35% 28%, #f09a86, #b0412f 55%, #5c1a12) padding-box, var(--edge) border-box !important; }
+[data-theme="starmap"] .cnode.se .cn-ic { background: radial-gradient(circle at 35% 28%, #d2d8e2, #788496 55%, #39414e) padding-box, var(--edge) border-box !important; }
+[data-theme="starmap"] .cn-ic .i { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+[data-theme="starmap"] .cn-t { margin-top: 3px; text-shadow: 0 1px 6px rgba(0,0,0,.9); }
+[data-theme="starmap"] .cn-p { text-shadow: 0 1px 6px rgba(0,0,0,.9); }
+[data-theme="starmap"] .ver-trend .vt-r { display: flex; align-items: center; gap: 8px; }
+/* 金色圓環記帳鈕 */
+[data-theme="starmap"] .tabs .fab {
+  border: 3px solid transparent !important;
+  background: radial-gradient(circle at 50% 38%, #2f3d30, #121a15 72%) padding-box, conic-gradient(from 200deg, #fbe8b0, #a37a38, #f3d58f, #7d5c28, #f6dc9a, #a37a38, #fbe8b0) border-box !important;
+  box-shadow: 0 0 0 4px rgba(10,18,15,.95), 0 0 0 5.5px rgba(222,190,125,.6), 0 0 30px rgba(222,190,125,.4), 0 10px 22px rgba(0,0,0,.6) !important;
+}
+[data-theme="starmap"] .tabs { border: 1px solid transparent !important; background: linear-gradient(180deg, rgba(28,42,36,.94), rgba(11,19,16,.96)) padding-box, var(--edge-soft) border-box !important; }
+[data-theme="starmap"] .toptabs button.on { border: 1px solid transparent; background: linear-gradient(180deg, rgba(70,74,50,.7), rgba(30,40,32,.8)) padding-box, var(--edge) border-box; }
+/* 帳戶總覽卡：右側淡山景 */
+[data-theme="starmap"] .sum-art { opacity: .2; }
+/* 桌機：頁首與分頁跟內容同寬 */
+[data-theme="starmap"] .top { padding-left: max(16px, calc((100% - 640px) / 2 + 16px)); padding-right: max(16px, calc((100% - 640px) / 2 + 16px)); }
+[data-theme="starmap"] .hdate, [data-theme="starmap"] .toptabs { max-width: 616px; margin-left: auto; margin-right: auto; }
+[data-theme="starmap"] .hdate { max-width: 640px; }
+[data-theme="starmap"] .cnode .cn-t, [data-theme="starmap"] .cnode .cn-p { background: rgba(9,16,13,.72); padding: 0 7px; border-radius: 6px; line-height: 1.45; }
+[data-theme="starmap"] .cnode .cn-t { margin-top: 4px; border-radius: 6px 6px 0 0; } [data-theme="starmap"] .cnode .cn-p { border-radius: 0 0 6px 6px; }
+
+/* --- 星圖秘境專屬 --- */
+[data-theme="starmap"] {
+  --night: #0d181a; --panel: rgba(20,36,37,.82); --panel-2: rgba(28,48,48,.88);
+  --c-bank: #5aa58a; --c-stock: #6e9fb2; --c-crypto: #d8a845; --c-recv: #8a7aa0; --c-debt: #c0584a;
+  --title: "Yuji Ledger TC", "Yuji Syuku", "Noto Serif TC", serif; --serif-tc: var(--title);
+  --glass: linear-gradient(165deg, rgba(30,52,52,.84), rgba(14,26,27,.92) 55%, rgba(10,19,20,.95));
+}
+html[data-theme="starmap"] body { background: #0d181a !important; }
+html[data-theme="starmap"] body::before { background: linear-gradient(rgba(8,14,15,.15), rgba(8,14,15,.25)), url("star-bg.webp") center top / cover no-repeat, #0d181a !important; }
+[data-theme="starmap"] :is(h2, .fold-t, .crow-name, .cc-name, .inv-row .grow b, .sheet h3, .tt-name, .seg-ctl button, .cn-t, .lbl, .vc-l, .ver-trend h4, .fab-grid b, .toptabs button, .brand) { font-family: var(--title) !important; font-weight: 400 !important; }
+/* 星空儀表板：星座連線＋新月 */
+[data-theme="starmap"] .dash {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 520'%3E%3Cg fill='none' stroke='%23d9b878' stroke-opacity='.28' stroke-width='.8'%3E%3Cpath d='M30 70 72 48 110 82 150 60M300 40 338 70 372 52M320 430 352 470 384 450M40 300 70 330 52 372'/%3E%3Ccircle cx='330' cy='90' r='34' stroke-opacity='.18'/%3E%3C/g%3E%3Cg fill='%23f0dcaa'%3E%3Ccircle cx='30' cy='70' r='1.6'/%3E%3Ccircle cx='72' cy='48' r='2'/%3E%3Ccircle cx='110' cy='82' r='1.4'/%3E%3Ccircle cx='150' cy='60' r='1.8'/%3E%3Ccircle cx='300' cy='40' r='1.5'/%3E%3Ccircle cx='338' cy='70' r='2'/%3E%3Ccircle cx='372' cy='52' r='1.3'/%3E%3Ccircle cx='320' cy='430' r='1.5'/%3E%3Ccircle cx='352' cy='470' r='1.9'/%3E%3Ccircle cx='384' cy='450' r='1.3'/%3E%3Ccircle cx='40' cy='300' r='1.4'/%3E%3Ccircle cx='70' cy='330' r='1.8'/%3E%3Ccircle cx='52' cy='372' r='1.3'/%3E%3C/g%3E%3Cpath d='M62 420a34 34 0 1 0 40 40 27 27 0 1 1-40-40z' fill='%23e8cf95' fill-opacity='.85'/%3E%3C/svg%3E") center / 100% 100% no-repeat padding-box,
+    radial-gradient(80% 55% at 50% 45%, rgba(46,86,84,.5), transparent 70%) padding-box,
+    linear-gradient(180deg, rgba(16,32,34,.92), rgba(10,20,22,.95)) padding-box,
+    var(--edge) border-box !important;
+}
+[data-theme="starmap"] .dial-box { margin: 52px auto 56px; }
+/* 帳戶／信用卡／投資總覽卡：底部金色山景 */
+html[data-theme="starmap"] :is(.sum-card, .hero2) {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23c9a46a' stop-opacity='.5'/%3E%3Cstop offset='1' stop-color='%23142424' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66V120H0Z' fill='%23233a38' fill-opacity='.8'/%3E%3Cpath d='M0 90 60 52 96 70 150 30 210 72 250 50 300 80 352 40 400 66' fill='none' stroke='url(%23a)' stroke-width='1.4'/%3E%3Cpath d='M0 104 70 80 130 96 190 70 260 98 330 76 400 92V120H0Z' fill='%23162a29'/%3E%3C/svg%3E") bottom / 100% 46% no-repeat padding-box,
+    radial-gradient(70% 70% at 75% 0%, rgba(201,164,106,.12), transparent 60%) padding-box,
+    var(--glass) padding-box, var(--edge) border-box !important;
+}
+[data-theme="starmap"] .sum-art { display: none; }
+/* 信用卡列：依卡色染底，末四碼 */
+html[data-theme="starmap"] .crow {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--cc) 55%, #132423) 0%, rgba(16,30,30,.92) 70%) padding-box, var(--edge-soft) border-box !important;
+}
+[data-theme="starmap"] .crow-ic { background: rgba(10,18,18,.5); border: 1px solid rgba(222,190,125,.45); color: #e6c98f; }
+.crow-l4 { display: none; }
+[data-theme="starmap"] .crow-l4 { display: block; font-family: var(--num); font-size: 12px; letter-spacing: .14em; color: #d6c9a8; margin: -1px 0 1px; }
+/* 帳戶圖示：鮮明圓形 */
+[data-theme="starmap"] .acc-ic { border-radius: 50%; background: radial-gradient(circle at 35% 30%, hsl(var(--h) 65% 62%), hsl(var(--h) 60% 38%)); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 10px rgba(0,0,0,.35); }
+/* 投資配置甜甜圈配色：松綠／玫瑰／象牙 */
+[data-theme="starmap"] { --c-stock: #4f9a8a; }
+/* 主題卡 */
+.tt-starmap { background: #142424; }
+.tt-starmap .tt-img { background: radial-gradient(50% 50% at 50% 50%, transparent 40%, #d9b87855 41%, transparent 43%), radial-gradient(70% 70% at 50% 45%, #24403e, #0d181a); }
+.tt-starmap .tt-orb { background: radial-gradient(circle at 35% 30%, #2e3a2c, #141c17); box-shadow: 0 0 12px #d9b87866, inset 0 0 0 2px #d9b878; }
+.tt-starmap .tt-name { color: #f1e6cc; } .tt-starmap .tt-name small, .tt-starmap .tt-desc { color: #b9b5a6; }
+html[data-theme="starmap"] .crow.sel, html[data-theme="starmap"] .crow:hover { background: linear-gradient(100deg, color-mix(in srgb, var(--cc) 62%, #132423) 0%, rgba(16,30,30,.92) 70%) padding-box, var(--edge) border-box !important; }

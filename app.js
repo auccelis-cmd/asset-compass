@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10l';
+const APP_VERSION = '2026.10.10n';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -1957,7 +1957,7 @@ function cardRow(c, st) {
   const rew = (c.rewards || []).length ? cycleReward(c, st.open.end).total : 0;
   return `<button class="crow${S.cardOpen === c.id ? ' sel' : ''}" style="--cc:${esc(c.color || '#b8893a')}" data-act="open-card" data-id="${c.id}">
     <span class="crow-ic">${svgI('card')}</span>
-    <span class="crow-main"><span class="crow-name">${esc(c.name)}</span>
+    <span class="crow-main"><span class="crow-name">${esc(c.name)}</span>${c.last4 ? `<span class="crow-l4">•••• ${esc(c.last4)}</span>` : ''}
       <span class="crow-sub">${n.final ? `${md(st.billed.end)} 帳單已出` : `本期累計中・${n.closeDays === 0 ? '今天' : n.closeDays + ' 天後'}結帳`}${rew ? `・回饋約 ${money(rew)}` : ''}</span></span>
     <span class="crow-r"><b>${money(n.amount)}</b><span class="${n.days <= 3 ? 'warn' : ''}">${n.days === 0 ? '今天扣款' : md(ymd(n.date)) + ' 扣款'}</span></span>
   </button>`;
@@ -2528,10 +2528,11 @@ render = function () {
 /* ================================================================
  * 夜苑鎏金 VERDANT：上方分頁、日期、資產走勢、放射式記帳選單
  * ================================================================ */
-THEME_INFO.verdant = ['夜苑鎏金', 'VERDANT', '墨綠玻璃・鎏金描邊'];
-THEMES.unshift(['verdant', '夜苑鎏金', ['#0b1512', '#cfae6e', '#f1ece0']]);
+THEME_INFO.verdant = ['星象午夜', 'ASTRAL', '午夜墨黑・松綠・香檳金'];
+THEMES.unshift(['verdant', '星象午夜', ['#111B20', '#C5A572', '#F1E9DB']]);
 try { if (!localStorage.getItem('ac_ver_v1')) { localStorage.setItem('ac_ver_v1', '1'); localStorage.setItem('ac_lib_v1', '1'); applyTheme('verdant'); } } catch (_) { }
-const isVer = () => document.documentElement.dataset.theme === 'verdant';
+const isVer = () => ['verdant', 'starmap'].includes(document.documentElement.dataset.theme);
+const isStar = () => document.documentElement.dataset.theme === 'starmap';
 function verChrome() {
   const top = $('header.top');
   if (top && !$('.toptabs')) {
@@ -2605,15 +2606,21 @@ compassDial = function (t) {
   for (let i = 0; i < 26; i++) { const a = rnd() * 360, r = 30 + rnd() * 75, [x, y] = P(r, a); stars += `<circle cx="${f(x)}" cy="${f(y)}" r="${(rnd() * 1.1 + .4).toFixed(2)}"/>`; }
   return `<svg class="vdial" viewBox="-170 -170 340 340" role="img" aria-label="資產羅盤：外環是資產比例，內側紅線是負債">
     <defs>
-      <linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe8b0"/><stop offset=".28" stop-color="#b98c45"/><stop offset=".5" stop-color="#f3d58f"/><stop offset=".75" stop-color="#8a6630"/><stop offset="1" stop-color="#e9c77f"/></linearGradient>
+      ${isStar() ? `<linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe8b0"/><stop offset=".28" stop-color="#b98c45"/><stop offset=".5" stop-color="#f3d58f"/><stop offset=".75" stop-color="#8a6630"/><stop offset="1" stop-color="#e9c77f"/></linearGradient>
       <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff0c4"/><stop offset="1" stop-color="#c9a056"/></linearGradient>
       <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#8f6a30"/><stop offset="1" stop-color="#5a4019"/></linearGradient>
-      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" stop-color="#1f3a33"/><stop offset=".7" stop-color="#11211c"/><stop offset="1" stop-color="#0a1411"/></radialGradient>
-      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" stop-color="#1d342d"/><stop offset="1" stop-color="#0b1613"/></radialGradient>
+      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" stop-color="#1c3a3a"/><stop offset=".7" stop-color="#112326"/><stop offset="1" stop-color="#0b1618"/></radialGradient>
+      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" stop-color="#1b3436"/><stop offset="1" stop-color="#0c1719"/></radialGradient>
+      <linearGradient id="vneedle" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff2c8"/><stop offset=".5" stop-color="#e2c27c"/><stop offset=".5" stop-color="#9c7638"/><stop offset="1" stop-color="#6e5226"/></linearGradient>`
+      : `<linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#D9BE8C"/><stop offset=".5" stop-color="#C5A572"/><stop offset="1" stop-color="#A88A5A"/></linearGradient>
+      <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#E3CFA6"/><stop offset="1" stop-color="#C5A572"/></linearGradient>
+      <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#8E7650"/><stop offset="1" stop-color="#5E4E35"/></linearGradient>
+      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" stop-color="#1D3436"/><stop offset="1" stop-color="#14232A"/></radialGradient>
+      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" stop-color="#1A2D31"/><stop offset="1" stop-color="#111B20"/></radialGradient>`}
       <filter id="vglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
     <circle r="166" fill="none" stroke="rgba(230,196,128,.18)" stroke-width="8" filter="url(#vglow)"/>
-    <circle r="160" fill="url(#vface)" stroke="url(#vgold)" stroke-width="3.2"/>
+    <circle r="160" fill="url(#vface)" stroke="url(#vgold)" stroke-width="2"/>
     <circle r="154" fill="none" stroke="url(#vgold)" stroke-width=".9" opacity=".8"/>
     ${ticks}
     <circle r="138" fill="none" stroke="url(#vgold)" stroke-width="1.4"/>
@@ -2622,9 +2629,12 @@ compassDial = function (t) {
     <circle r="110" fill="none" stroke="url(#vgold)" stroke-width="1.1"/>
     <g class="vstars">${stars}</g>
     <g class="vrose" opacity=".5">${rose}</g>
-    <circle r="88" fill="url(#vcore)" stroke="url(#vgold)" stroke-width="2.4"/>
+    <circle r="88" fill="url(#vcore)" stroke="url(#vgold)" stroke-width="1.6"/>
     <circle r="82" fill="none" stroke="rgba(230,196,128,.45)" stroke-width=".7"/>
     <circle r="82" fill="none" stroke="rgba(230,196,128,.55)" stroke-width="3" stroke-dasharray=".8 6.2"/>
+    ${isStar() ? `<g class="vneedle"><path d="M0 -206 L7 -150 L0 -92 L-7 -150Z" fill="url(#vneedle)"/><path d="M0 206 L7 150 L0 92 L-7 150Z" fill="url(#vneedle)"/>
+      <path d="M0 -226 L3 -212 L14 -208 L3 -204 L0 -190 L-3 -204 L-14 -208 L-3 -212Z" fill="#f3d58f"/>
+      <circle cy="-150" r="3" fill="#1b3436" stroke="#e2c27c"/><circle cy="150" r="3" fill="#1b3436" stroke="#e2c27c"/></g>` : ''}
   </svg>`;
 };
 const _ovView2 = VIEWS.overview;
@@ -2638,3 +2648,8 @@ VIEWS.overview = () => {
   const center = `<div class="vcenter"><span class="vc-l">總資產</span><b class="vc-n">${money(t.net)}</b><span class="vc-c ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span><span class="vc-s">${range === 30 ? '本月' : range === 90 ? '近三個月' : '近一年'}變動</span></div>`;
   return h.replace('<div class="dial-box">', '<div class="dial-box">' + center);
 };
+
+/* ---------- 星圖秘境（照設計稿） ---------- */
+THEME_INFO.starmap = ['星圖秘境', 'STARMAP', '星空羅盤・鎏金描邊'];
+THEMES.unshift(['starmap', '星圖秘境', ['#0d181a', '#d9b878', '#f1ece0']]);
+try { if (!localStorage.getItem('ac_star_v1')) { localStorage.setItem('ac_star_v1', '1'); applyTheme('starmap'); } } catch (_) { }
