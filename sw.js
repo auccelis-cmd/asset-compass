@@ -1,6 +1,6 @@
 // 只快取 App 外殼（網路優先，離線時退回快取）；報價與資料一律走網路。
-const CACHE = 'asset-compass-ui-v1';
-const SHELL = ['./', 'index.html', 'style.css', 'ui-v1.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'asset-compass-v16';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
