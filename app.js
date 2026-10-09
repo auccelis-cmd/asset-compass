@@ -2531,8 +2531,8 @@ render = function () {
 THEME_INFO.verdant = ['星象午夜', 'ASTRAL', '午夜墨黑・松綠・香檳金'];
 THEMES.unshift(['verdant', '星象午夜', ['#111B20', '#C5A572', '#F1E9DB']]);
 try { if (!localStorage.getItem('ac_ver_v1')) { localStorage.setItem('ac_ver_v1', '1'); localStorage.setItem('ac_lib_v1', '1'); applyTheme('verdant'); } } catch (_) { }
-const isVer = () => ['verdant', 'starmap'].includes(document.documentElement.dataset.theme);
-const isStar = () => document.documentElement.dataset.theme === 'starmap';
+const isVer = () => ['ivory', 'green', 'navy', 'purple', 'starmap'].includes(document.documentElement.dataset.theme);
+const isStar = () => ['ivory', 'green', 'navy', 'purple', 'starmap'].includes(document.documentElement.dataset.theme);
 function verChrome() {
   const top = $('header.top');
   if (top && !$('.toptabs')) {
@@ -2652,4 +2652,4 @@ VIEWS.overview = () => {
 /* ---------- 星圖秘境（照設計稿） ---------- */
 THEME_INFO.starmap = ['星圖秘境', 'STARMAP', '星空羅盤・鎏金描邊'];
 THEMES.unshift(['starmap', '星圖秘境', ['#0d181a', '#d9b878', '#f1ece0']]);
-try { if (!localStorage.getItem('ac_star_v1')) { localStorage.setItem('ac_star_v1', '1'); applyTheme('starmap'); } } catch (_) { }
+// Respect the user's chosen theme; never force a visual theme on startup.

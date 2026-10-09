@@ -1,0 +1,59 @@
+/* Asset Compass · Celestial Instrument v4 | UI-only theme layer. */
+/* Existing functionality and calculations remain in app.js. */
+:root { --instrument-gold:#dfc38a; }
+[data-theme="ivory"] {--night:#eee7d9;--night-2:#f5f0e5;--panel:#fffaf0;--panel-2:#f4ead8;--line:#d9c5a2;--line-soft:#e9dcc4;--gold:#b48a4b;--gold-soft:#e1c895;--accent-text:#8d6532;--on-accent:#fffaf1;--text:#2c302c;--muted:#756f62;--faint:#988e7b;--needle:#b38b51;--fab-hi:#f6e4b5;--fab:#c39b58;--fab-lo:#8d6636;--fab-star:#fff9e9;--card-1:#fffbf2;--card-2:#e8d7b7;--card-text:#302c25;--card-sub:#756a56;--glow:#fffaf0;--star:#c7ab79;--shadow:72,51,24; color-scheme:light;--ac-veil:rgba(255,250,237,.77);--ac-overlay:rgba(245,232,207,.74);--ac-edge:#b58b50;--ac-ink:#a9844e;--ac-aura:rgba(207,169,98,.23)}
+[data-theme="green"] {--night:#081b19;--night-2:#0e2926;--panel:#102c2a;--panel-2:#193b37;--line:#6c654b;--line-soft:#395149;--gold:#d6b77c;--gold-soft:#ab8e5b;--accent-text:#e3c58d;--on-accent:#17241d;--text:#f3e9d6;--muted:#b7b8a7;--faint:#899c93;--needle:#e4c48a;--fab-hi:#f7dda3;--fab:#b99155;--fab-lo:#74542e;--fab-star:#fff8df;--card-1:#163934;--card-2:#0b2221;--card-text:#f5e9d2;--card-sub:#b9ac92;--glow:#31524a;--star:#ddc594;--shadow:0,0,0;color-scheme:dark;--ac-veil:rgba(7,26,24,.8);--ac-overlay:rgba(7,25,23,.78);--ac-edge:#c4a56b;--ac-ink:#d8bc83;--ac-aura:rgba(77,145,128,.28)}
+[data-theme="navy"] {--night:#0b182a;--night-2:#132640;--panel:#162b43;--panel-2:#203952;--line:#72849b;--line-soft:#354c63;--gold:#d7d6d0;--gold-soft:#9baec4;--accent-text:#e2e7ee;--on-accent:#1c2b3d;--text:#f3f5f6;--muted:#bdc7d4;--faint:#8f9fb4;--needle:#e2e7ef;--fab-hi:#f5f4e7;--fab:#9caec4;--fab-lo:#536f90;--fab-star:#fff;--card-1:#233d59;--card-2:#0e2138;--card-text:#f4f5f8;--card-sub:#b2c3d7;--glow:#2e4766;--star:#b6c9df;--shadow:0,0,0;color-scheme:dark;--ac-veil:rgba(9,23,43,.83);--ac-overlay:rgba(12,31,54,.78);--ac-edge:#a9b9cf;--ac-ink:#d5deea;--ac-aura:rgba(94,133,180,.29)}
+[data-theme="purple"] {--night:#221823;--night-2:#322334;--panel:#392a3b;--panel-2:#49374b;--line:#a9858f;--line-soft:#654c63;--gold:#e0b9aa;--gold-soft:#bd8d93;--accent-text:#f1d2c5;--on-accent:#30212d;--text:#f8eef0;--muted:#d1bbc9;--faint:#a992ad;--needle:#f0c7af;--fab-hi:#f7d8ca;--fab:#c68d8e;--fab-lo:#80576f;--fab-star:#fff5e8;--card-1:#543d51;--card-2:#291e32;--card-text:#f9eef3;--card-sub:#d7b9c9;--glow:#563a56;--star:#e7b9bd;--shadow:0,0,0;color-scheme:dark;--ac-veil:rgba(34,23,39,.84);--ac-overlay:rgba(44,29,47,.8);--ac-edge:#dfb5a6;--ac-ink:#f1c5b5;--ac-aura:rgba(176,112,151,.25)}
+/* Shared instrument treatment: one visual language, four material palettes */
+html:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) body { background:var(--night)!important; }
+html:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) body::before { content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:1;background:linear-gradient(var(--ac-veil),var(--ac-overlay)),url("star-bg.webp") center top / cover no-repeat!important; }
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) :is(.panel,.fold,.sum-card,.hero2,.dash,.trend-card,.inv-row,.crow,.tile,.list-card,.rew-strip,.dist,.txn-panel,.due-sum,.bill,.info-grid>div,.cycle>div,.sheet) {background:linear-gradient(148deg,color-mix(in srgb,var(--panel) 95%,var(--gold)),var(--panel) 70%)!important;border:1px solid color-mix(in srgb,var(--ac-edge) 48%,var(--line-soft))!important;box-shadow:inset 0 1px 0 color-mix(in srgb,var(--gold) 13%,transparent),0 9px 28px rgba(0,0,0,.12)!important;border-radius:17px;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) :is(.top,.toptabs,.tabs) {background:color-mix(in srgb,var(--night) 91%,transparent)!important;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .tabs {border:1px solid var(--ac-edge)!important;box-shadow:0 12px 30px rgba(0,0,0,.28),0 0 18px var(--ac-aura)!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .tabs .fab {border:2px solid var(--gold-soft)!important;background:radial-gradient(circle at 32% 25%,var(--fab-hi),var(--fab) 55%,var(--fab-lo))!important;box-shadow:0 0 0 4px var(--night),0 0 20px var(--ac-aura),0 5px 18px rgba(0,0,0,.24)!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) :is(.brand,h2,.fold-t,.sheet h3,.crow-name,.cc-name,.tt-name,.ver-trend h4) {font-family:var(--serif-tc)!important;letter-spacing:.07em;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) :is(.hero2,.sum-card) {background:radial-gradient(85% 110% at 95% 95%,var(--ac-aura),transparent 70%),linear-gradient(140deg,var(--panel),var(--panel-2))!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) :is(.compass2,.compass) {filter:drop-shadow(0 0 16px var(--ac-aura));}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) :is(.btn.primary,.pills button.on,.toptabs button.on) {background:linear-gradient(135deg,var(--fab-hi),var(--fab) 48%,var(--fab-lo))!important;color:var(--on-accent)!important;border:1px solid var(--gold-soft)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 3px 10px var(--ac-aura)!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) :is(input,select,textarea,.money-in) {background:var(--night-2)!important;border:1px solid var(--line)!important;color:var(--text)!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) :is(input,select,textarea):focus {border-color:var(--gold)!important;box-shadow:0 0 0 3px var(--ac-aura)!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .modal {background:rgba(0,0,0,.68)!important;backdrop-filter:blur(4px);}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cc {background:radial-gradient(85% 90% at 90% 15%,color-mix(in srgb,var(--cc) 24%,transparent),transparent),linear-gradient(145deg,var(--card-1),var(--card-2))!important;border:1px solid var(--gold-soft)!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .crow {border-left:4px solid var(--cc)!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .tt-img {background:radial-gradient(circle at 50% 50%,transparent 31%,var(--ac-edge) 32%,transparent 34%,transparent 45%,var(--ac-edge) 46%,transparent 48%),radial-gradient(circle at 50% 50%,var(--panel-2),var(--night))!important;}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .tt-orb {background:radial-gradient(circle at 35% 30%,var(--fab-hi),var(--fab-lo))!important;box-shadow:0 0 14px var(--ac-aura)!important;}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important;}}
+
+
+/* v5: shared compass layout, theme-specific instrument materials */
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .vdial .vt {stroke:var(--gold);opacity:.48}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .vdial .vt.M {stroke:var(--fab-hi);opacity:.95}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .vdial .vorbit ellipse {stroke:var(--gold);opacity:.25}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .vc-l {color:var(--muted)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .vc-n {color:var(--text);font-size:clamp(18px,5.4vw,25px)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .vc-s {color:var(--muted)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .dash-head {display:none}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .ver-trend {display:block}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .hdate {display:block;color:var(--muted)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .toptabs {display:grid}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .toptabs button {color:var(--muted)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .brand {color:var(--text)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .ver-trend h4 {color:var(--text)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cn-t,:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cn-p {color:var(--text);text-shadow:none;background:var(--panel)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .dial-box {margin:44px auto 58px;width:min(100%,360px)}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .vcenter {width:53%}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cnode .cn-ic {border-color:var(--gold)!important}
+[data-theme="ivory"] .vdial {filter:drop-shadow(0 4px 13px rgba(143,100,44,.2))}
+[data-theme="navy"] .vdial {filter:drop-shadow(0 7px 18px rgba(102,152,213,.25))}
+[data-theme="purple"] .vdial {filter:drop-shadow(0 7px 18px rgba(224,142,181,.24))}
+@media(max-width:380px){:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .dial-box{width:min(100%,310px)}:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .vc-n{font-size:18px}}
+
+/* Orb positions: north bank, west investment, east credit, south other */
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cnode.nw { left:50%!important;top:3%!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-27px) }
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cnode.ne { left:4%!important;top:50%!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-27px) }
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cnode.sw { left:96%!important;top:50%!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-27px) }
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cnode.se { left:50%!important;top:97%!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-27px) }
+
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cnode {width:76px;z-index:2}
+:is([data-theme="ivory"],[data-theme="green"],[data-theme="navy"],[data-theme="purple"]) .cn-ic {width:54px;height:54px}
