@@ -1227,3 +1227,72 @@ body.fab-open .tabs .fab svg { transform: rotate(45deg) scale(.9); }
 [data-theme="verdant"] .inv-ic.stocks { background: radial-gradient(circle at 35% 30%, #e48a72, #b04a36 60%, #6a2618) !important; }
 [data-theme="verdant"] .inv-ic.crypto { background: radial-gradient(circle at 35% 30%, #f0cd7a, #c18f2e 60%, #6e4f14) !important; }
 .fab-radial .fr-more { bottom: calc(env(safe-area-inset-bottom) + 286px); }
+
+/* ===== 夜苑 v2：金屬描邊、星盤、桌機寬度 ===== */
+[data-theme="verdant"] {
+  --edge: linear-gradient(135deg, rgba(246,222,160,.85), rgba(120,92,44,.55) 30%, rgba(214,180,112,.7) 55%, rgba(90,68,32,.45) 80%, rgba(236,206,140,.8));
+  --edge-soft: linear-gradient(135deg, rgba(246,222,160,.5), rgba(120,92,44,.25) 35%, rgba(214,180,112,.4) 60%, rgba(90,68,32,.2) 85%, rgba(236,206,140,.45));
+  --glass: linear-gradient(165deg, rgba(36,56,49,.82), rgba(16,27,23,.9) 55%, rgba(11,19,16,.94));
+}
+/* 金屬漸層邊框（padding-box 玻璃＋border-box 金邊） */
+[data-theme="verdant"] :is(.panel, .fold, .sum-card, .hero2, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip, .info-grid div, .seg-ctl) {
+  border: 1px solid transparent !important;
+  background: var(--glass) padding-box, var(--edge-soft) border-box !important;
+  box-shadow: inset 0 1px 0 rgba(255,240,205,.08), 0 0 0 .5px rgba(0,0,0,.6), 0 12px 28px rgba(0,0,0,.45) !important;
+}
+[data-theme="verdant"] :is(.dash, .sum-card, .hero2) {
+  background: radial-gradient(90% 60% at 50% 40%, rgba(48,84,70,.4), transparent 70%) padding-box, var(--glass) padding-box, var(--edge) border-box !important;
+  box-shadow: inset 0 1px 0 rgba(255,240,205,.12), 0 0 30px rgba(207,174,110,.12), 0 16px 36px rgba(0,0,0,.5) !important;
+  border: 1.2px solid transparent !important;
+}
+[data-theme="verdant"] .dash { border-radius: 26px !important; padding: 16px 10px 22px; }
+[data-theme="verdant"] :is(.crow, .inv-row, .tile):hover, [data-theme="verdant"] .inv-row.on, [data-theme="verdant"] .crow.sel {
+  background: radial-gradient(120% 120% at 0% 0%, rgba(207,174,110,.12), transparent 60%) padding-box, var(--glass) padding-box, var(--edge) border-box !important;
+  box-shadow: 0 0 22px rgba(222,190,125,.22), inset 0 1px 0 rgba(255,240,205,.14), 0 12px 28px rgba(0,0,0,.45) !important;
+}
+/* 星盤 */
+[data-theme="verdant"] .dash-head { display: none; }
+[data-theme="verdant"] .dial-box { width: min(100%, 360px); margin: 26px auto 40px; }
+.vdial { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 24px rgba(0,0,0,.6)); }
+.vdial .vt { stroke: rgba(226,192,124,.45); stroke-width: .7; } .vdial .vt.m { stroke: rgba(236,206,140,.7); stroke-width: 1; } .vdial .vt.M { stroke: #ecd08f; stroke-width: 1.8; }
+.vdial .vorbit ellipse { fill: none; stroke: rgba(226,192,124,.22); stroke-width: .8; }
+.vdial .vtrack { fill: none; stroke: rgba(0,0,0,.45); stroke-width: 12; }
+.vdial .vr { fill: none; stroke-width: 9; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(0,0,0,.6)); }
+.vdial .vr.debt { stroke: var(--c-debt); stroke-width: 3; }
+.vdial .vstars circle { fill: #f1d9a2; opacity: .55; }
+.vcenter { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; width: 50%; text-align: center; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.vc-l { font-family: var(--serif-tc); font-weight: 700; font-size: 15px; letter-spacing: .3em; color: #e2d6b8; padding-left: .3em; }
+.vc-n { font-family: var(--num); font-weight: 700; font-size: clamp(19px, 6.4vw, 26px); color: #fbf3df; line-height: 1.25; white-space: nowrap; text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+.vc-c { font-weight: 700; font-size: 14px; margin-top: 2px; } .vc-c.pos { color: #8fd8a8; } .vc-c.neg { color: #f09a8a; }
+.vc-s { font-size: 11.5px; color: #bfb7a0; font-weight: 600; }
+/* 四個資產圓球坐在外圈上：上／左／右／下 */
+[data-theme="verdant"] .cnode { width: 76px; transform: translate(-50%, -27px); z-index: 2; }
+[data-theme="verdant"] .cnode.nw { left: 50% !important; top: 3% !important; right: auto !important; bottom: auto !important; }
+[data-theme="verdant"] .cnode.ne { left: 4% !important; top: 50% !important; right: auto !important; bottom: auto !important; }
+[data-theme="verdant"] .cnode.sw { left: 96% !important; top: 50% !important; right: auto !important; bottom: auto !important; }
+[data-theme="verdant"] .cnode.se { left: 50% !important; top: 97% !important; right: auto !important; bottom: auto !important; }
+[data-theme="verdant"] .cn-ic { width: 54px; height: 54px; border: 3px solid transparent !important; }
+[data-theme="verdant"] .cnode.nw .cn-ic { background: radial-gradient(circle at 35% 28%, #8edcb6, #2f8460 55%, #174632) padding-box, var(--edge) border-box !important; }
+[data-theme="verdant"] .cnode.ne .cn-ic { background: radial-gradient(circle at 35% 28%, #a6d0c2, #3f7466 55%, #1e3e36) padding-box, var(--edge) border-box !important; }
+[data-theme="verdant"] .cnode.sw .cn-ic { background: radial-gradient(circle at 35% 28%, #f09a86, #b0412f 55%, #5c1a12) padding-box, var(--edge) border-box !important; }
+[data-theme="verdant"] .cnode.se .cn-ic { background: radial-gradient(circle at 35% 28%, #d2d8e2, #788496 55%, #39414e) padding-box, var(--edge) border-box !important; }
+[data-theme="verdant"] .cn-ic .i { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+[data-theme="verdant"] .cn-t { margin-top: 3px; text-shadow: 0 1px 6px rgba(0,0,0,.9); }
+[data-theme="verdant"] .cn-p { text-shadow: 0 1px 6px rgba(0,0,0,.9); }
+[data-theme="verdant"] .ver-trend .vt-r { display: flex; align-items: center; gap: 8px; }
+/* 金色圓環記帳鈕 */
+[data-theme="verdant"] .tabs .fab {
+  border: 3px solid transparent !important;
+  background: radial-gradient(circle at 50% 38%, #2f3d30, #121a15 72%) padding-box, conic-gradient(from 200deg, #fbe8b0, #a37a38, #f3d58f, #7d5c28, #f6dc9a, #a37a38, #fbe8b0) border-box !important;
+  box-shadow: 0 0 0 4px rgba(10,18,15,.95), 0 0 0 5.5px rgba(222,190,125,.6), 0 0 30px rgba(222,190,125,.4), 0 10px 22px rgba(0,0,0,.6) !important;
+}
+[data-theme="verdant"] .tabs { border: 1px solid transparent !important; background: linear-gradient(180deg, rgba(28,42,36,.94), rgba(11,19,16,.96)) padding-box, var(--edge-soft) border-box !important; }
+[data-theme="verdant"] .toptabs button.on { border: 1px solid transparent; background: linear-gradient(180deg, rgba(70,74,50,.7), rgba(30,40,32,.8)) padding-box, var(--edge) border-box; }
+/* 帳戶總覽卡：右側淡山景 */
+[data-theme="verdant"] .sum-art { opacity: .2; }
+/* 桌機：頁首與分頁跟內容同寬 */
+[data-theme="verdant"] .top { padding-left: max(16px, calc((100% - 640px) / 2 + 16px)); padding-right: max(16px, calc((100% - 640px) / 2 + 16px)); }
+[data-theme="verdant"] .hdate, [data-theme="verdant"] .toptabs { max-width: 616px; margin-left: auto; margin-right: auto; }
+[data-theme="verdant"] .hdate { max-width: 640px; }
+[data-theme="verdant"] .cnode .cn-t, [data-theme="verdant"] .cnode .cn-p { background: rgba(9,16,13,.72); padding: 0 7px; border-radius: 6px; line-height: 1.45; }
+[data-theme="verdant"] .cnode .cn-t { margin-top: 4px; border-radius: 6px 6px 0 0; } [data-theme="verdant"] .cnode .cn-p { border-radius: 0 0 6px 6px; }

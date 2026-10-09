@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10k';
+const APP_VERSION = '2026.10.10l';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -2547,7 +2547,7 @@ function verTrend() {
   const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.net) }));
   if (pts.length) pts[pts.length - 1] = { v: t.net }; else pts.push({ v: t.net });
   const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
-  return `<section class="panel ver-trend"><div class="tp-head"><h4>資產走勢</h4><span class="meta ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span></div><div class="area-box sm">${areaChart(pts)}</div></section>`;
+  return `<section class="panel ver-trend"><div class="tp-head"><h4>資產走勢</h4><span class="vt-r"><span class="meta ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span><span class="sel mini"><select data-range>${[[30, '近一個月'], [90, '近三個月'], [365, '近一年']].map(([v, l]) => `<option value="${v}" ${v === range ? 'selected' : ''}>${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></span></div><div class="area-box sm">${areaChart(pts)}</div></section>`;
 }
 const _ovView = VIEWS.overview;
 VIEWS.overview = () => {
@@ -2573,3 +2573,68 @@ openFab = function () {
   r.addEventListener('click', e => { if (!e.target.closest('[data-act]') || e.target.closest('[data-act]')) setTimeout(closeRadial, 0); });
 };
 document.addEventListener('click', e => { if (e.target.closest('[data-act="fab-sheet"]')) { closeRadial(); _openFabSheet(); } });
+
+/* ---------- 夜苑：金屬星盤 ---------- */
+const _compassDialStd = compassDial;
+compassDial = function (t) {
+  if (!isVer()) return _compassDialStd(t);
+  const P = (r, a) => [r * Math.cos(a * DEG), r * Math.sin(a * DEG)], f = n => n.toFixed(1);
+  let ticks = '';
+  for (let i = 0; i < 180; i++) {
+    const a = i * 2, M = i % 15 === 0, m = i % 5 === 0;
+    const [x0, y0] = P(M ? 141 : m ? 145 : 148, a), [x1, y1] = P(151, a);
+    ticks += `<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" class="vt${M ? ' M' : m ? ' m' : ''}"/>`;
+  }
+  const segs = [[t.bankOnly, 'var(--c-bank)'], [t.invest, 'var(--c-stock)'], [t.other, 'var(--c-recv)']].filter(x => x[0] > 0);
+  const tot = sum(segs, x => x[0]) || 1;
+  let a0 = -90, ring = '';
+  for (const [v, c] of segs) {
+    const sw = v / tot * 360;
+    ring += sw >= 359.5 ? `<circle r="128" class="vr" style="stroke:${c}"/>` : `<path d="${arcPath(128, a0 + 1.5, a0 + sw - 1.5)}" class="vr" style="stroke:${c}"/>`;
+    a0 += sw;
+  }
+  const dsw = t.gross > 0 ? Math.min(359, (t.debt + t.liab) / t.gross * 360) : 0;
+  const debt = dsw > .5 ? `<path d="${arcPath(117, -90, -90 + dsw)}" class="vr debt"/>` : '';
+  const star = (len, w, rot) => `<g transform="rotate(${rot})"><path d="M0 ${-len} L${w} 0 L0 0Z" fill="url(#vgA)"/><path d="M0 ${-len} L${-w} 0 L0 0Z" fill="url(#vgB)"/></g>`;
+  let rose = '';
+  for (const r of [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5]) rose += star(70, 5, r);
+  for (const r of [45, 135, 225, 315]) rose += star(100, 9, r);
+  for (const r of [0, 90, 180, 270]) rose += star(138, 12, r);
+  let stars = '';
+  const rnd = (s => () => (s = (s * 9301 + 49297) % 233280) / 233280)(7);
+  for (let i = 0; i < 26; i++) { const a = rnd() * 360, r = 30 + rnd() * 75, [x, y] = P(r, a); stars += `<circle cx="${f(x)}" cy="${f(y)}" r="${(rnd() * 1.1 + .4).toFixed(2)}"/>`; }
+  return `<svg class="vdial" viewBox="-170 -170 340 340" role="img" aria-label="資產羅盤：外環是資產比例，內側紅線是負債">
+    <defs>
+      <linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe8b0"/><stop offset=".28" stop-color="#b98c45"/><stop offset=".5" stop-color="#f3d58f"/><stop offset=".75" stop-color="#8a6630"/><stop offset="1" stop-color="#e9c77f"/></linearGradient>
+      <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff0c4"/><stop offset="1" stop-color="#c9a056"/></linearGradient>
+      <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#8f6a30"/><stop offset="1" stop-color="#5a4019"/></linearGradient>
+      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" stop-color="#1f3a33"/><stop offset=".7" stop-color="#11211c"/><stop offset="1" stop-color="#0a1411"/></radialGradient>
+      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" stop-color="#1d342d"/><stop offset="1" stop-color="#0b1613"/></radialGradient>
+      <filter id="vglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <circle r="166" fill="none" stroke="rgba(230,196,128,.18)" stroke-width="8" filter="url(#vglow)"/>
+    <circle r="160" fill="url(#vface)" stroke="url(#vgold)" stroke-width="3.2"/>
+    <circle r="154" fill="none" stroke="url(#vgold)" stroke-width=".9" opacity=".8"/>
+    ${ticks}
+    <circle r="138" fill="none" stroke="url(#vgold)" stroke-width="1.4"/>
+    <g class="vorbit"><ellipse rx="150" ry="58" transform="rotate(28)"/><ellipse rx="150" ry="58" transform="rotate(-28)"/><ellipse rx="150" ry="58" transform="rotate(90)"/></g>
+    <circle r="128" class="vtrack"/>${ring}${debt}
+    <circle r="110" fill="none" stroke="url(#vgold)" stroke-width="1.1"/>
+    <g class="vstars">${stars}</g>
+    <g class="vrose" opacity=".5">${rose}</g>
+    <circle r="88" fill="url(#vcore)" stroke="url(#vgold)" stroke-width="2.4"/>
+    <circle r="82" fill="none" stroke="rgba(230,196,128,.45)" stroke-width=".7"/>
+    <circle r="82" fill="none" stroke="rgba(230,196,128,.55)" stroke-width="3" stroke-dasharray=".8 6.2"/>
+  </svg>`;
+};
+const _ovView2 = VIEWS.overview;
+VIEWS.overview = () => {
+  let h = _ovView2();
+  if (!isVer()) return h;
+  const t = splitTotals(), range = S.range || 30;
+  const since = new Date(); since.setDate(since.getDate() - range);
+  const snaps = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const first = snaps.length ? num(snaps[0].net) : t.net, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
+  const center = `<div class="vcenter"><span class="vc-l">總資產</span><b class="vc-n">${money(t.net)}</b><span class="vc-c ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span><span class="vc-s">${range === 30 ? '本月' : range === 90 ? '近三個月' : '近一年'}變動</span></div>`;
+  return h.replace('<div class="dial-box">', '<div class="dial-box">' + center);
+};
