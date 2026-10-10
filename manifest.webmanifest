@@ -1,14 +1,16 @@
 {
-  "name": "資產羅盤 Asset Compass",
-  "short_name": "資產羅盤",
+  "name": "月汐 Lunaria",
+  "short_name": "月汐",
+  "description": "經期、排卵與身體節奏紀錄",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#fcfaf5",
-  "theme_color": "#fcfaf5",
+  "background_color": "#F6EFEC",
+  "theme_color": "#F6EFEC",
+  "lang": "zh-Hant",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" }
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

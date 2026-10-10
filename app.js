@@ -1,2867 +1,1075 @@
-'use strict';
-/* 資產羅盤 Asset Compass
- * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
- */
-
-const APP_VERSION = '2026.10.10v';
-const CFG = window.ASSET_CONFIG || {};
-const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
-let sb = null, user = null;
-
-const TABLES = ['accounts', 'balance_log', 'cards', 'transactions', 'settlements', 'stocks', 'crypto_holdings', 'wallets', 'snapshots', 'receivables', 'liabilities'];
-const OPTIONAL_TABLES = ['receivables', 'liabilities']; // 後來新增的表：還沒建立時不讓整個 App 壞掉
-const S = {
-  accounts: [], balance_log: [], cards: [], transactions: [], settlements: [],
-  stocks: [], crypto_holdings: [], wallets: [], snapshots: [], receivables: [], liabilities: [], missingTables: [],
-  quotes: {}, prices: {}, fx: { TWD: 1 }, walletBal: {},
-  tab: ({ stocks: 'invest', crypto: 'invest' })[localStorage.getItem('ac_tab')] || localStorage.getItem('ac_tab') || 'overview',
-  invSub: localStorage.getItem('ac_inv') || 'stocks', cardSel: 0,
-  hide: localStorage.getItem('ac_hide') === '1',
-};
-
-/* ---------------- utils ---------------- */
-const $ = (s, el = document) => el.querySelector(s);
+/* 月汐 Lunaria · 主程式 */
+const APP_VERSION = '1.3.0';
+const CFG = window.LUNARIA_CONFIG || {};
+const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey && window.supabase);
+const sb = CLOUD ? window.supabase.createClient(CFG.supabaseUrl.replace(/\/rest\/v1\/?$/, ''), CFG.supabaseAnonKey) : null;
+const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
-const pad = n => String(n).padStart(2, '0');
-const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const parseYmd = s => { const [y, m, d] = String(s).slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
-const todayDate = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-const todayStr = () => ymd(new Date());
-const md = s => { const d = parseYmd(s); return `${d.getMonth() + 1}/${d.getDate()}`; };
-const sum = (arr, f) => arr.reduce((a, x) => a + (f ? f(x) : x), 0);
-const CUR_SYM = { TWD: 'NT$', USD: 'US$', JPY: '¥', EUR: '€', CNY: 'CN¥', HKD: 'HK$', KRW: '₩', GBP: '£', AUD: 'A$' };
+const { toD, ymd, add, diff } = Cycle;
+const today = () => toD(new Date());
+const WD = ['日', '一', '二', '三', '四', '五', '六'];
+const md = d => { d = toD(d); return `${d.getMonth() + 1}/${d.getDate()}`; };
+const mdw = d => { d = toD(d); return `${d.getMonth() + 1}/${d.getDate()}（週${WD[d.getDay()]}）`; };
+const r1 = n => (Math.round(n * 10) / 10).toString();
 
-function money(v, cur = 'TWD', dp) {
-  if (S.hide) return '••••';
-  if (!Number.isFinite(v)) return '—';
-  const d = dp ?? (cur === 'JPY' || cur === 'TWD' || cur === 'KRW' ? 0 : 2);
-  return (v < 0 ? '-' : '') + (CUR_SYM[cur] || cur + ' ') + Math.abs(v).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
+/* ---------- 本機設定（每台裝置各自） ---------- */
+const SET_DEF = { pal: 'moss', mode: 'auto', cycleLen: 28, periodLen: 5, luteal: 0, waterGoal: 2000, stepGoal: 8000, exGoal: 30, rm: { period: true, ovu: true, med: true, tips: true }, pin: null };
+const SET = (() => { try { const c = JSON.parse(localStorage.getItem('lun_set') || '{}'); return { ...SET_DEF, ...c, rm: { ...SET_DEF.rm, ...(c.rm || {}) } }; } catch (_) { return { ...SET_DEF }; } })();
+const saveSet = () => { try { localStorage.setItem('lun_set', JSON.stringify(SET)); } catch (_) { } };
+const PALS = { moss: ['月光象牙・霧綠藍', ['#F7F3EA', '#7C9E93', '#8EA3CF', '#C9A46A']], mist: ['鼠尾草綠・霧藍灰', ['#F8F7F3', '#8FA79B', '#8AA3B2', '#C9B8A8']], blush: ['霧紫灰・陶粉', ['#F8F2F2', '#9A80AA', '#E9A3A6', '#9DB8A6']] };
+let applyTheme = function () {
+  let m = SET.mode; if (m === 'auto') m = matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
+  const de = document.documentElement; de.dataset.pal = SET.pal; de.dataset.mode = m;
+  const bg = getComputedStyle(de).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', bg || '#F7F3EA');
 }
-const qtyFmt = v => S.hide ? '••' : Number(v).toLocaleString('zh-TW', { maximumFractionDigits: 8 });
-const pctFmt = v => Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '—';
-const toTWD = (amt, cur) => (!cur || cur === 'TWD') ? amt : (S.fx[cur] ? amt / S.fx[cur] : NaN);
-const fromTWD = (amt, cur) => (!cur || cur === 'TWD') ? amt : (S.fx[cur] ? amt * S.fx[cur] : NaN);
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (SET.mode === 'auto') applyTheme(); }); } catch (_) { }
+const aOpts = () => ({ cycleLen: SET.cycleLen, periodLen: SET.periodLen, luteal: SET.luteal || 0 });
 
-function cacheGet(k, maxAge) {
-  try { const o = JSON.parse(localStorage.getItem('ac_c_' + k)); if (o && Date.now() - o.t < maxAge) return o.v; } catch (_) { }
-  return null;
-}
-function cacheSet(k, v) { try { localStorage.setItem('ac_c_' + k, JSON.stringify({ t: Date.now(), v })); } catch (_) { } }
-
-let toastTimer;
-function toast(msg, ms = 2600) {
-  const el = $('#toast'); el.textContent = msg; el.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, ms);
-}
-
-/* ---------------- data layer ---------------- */
-const LKEY = 'asset_compass_local_v1';
-const local = {
-  load() { try { return JSON.parse(localStorage.getItem(LKEY)) || {}; } catch (_) { return {}; } },
-  save(o) { localStorage.setItem(LKEY, JSON.stringify(o)); },
+/* ---------- 圖示 ---------- */
+const IC = {
+  home: '<path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/>',
+  cal: '<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  list: '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>',
+  leaf: '<path d="M5 19c0-8 5-13 14-14 0 9-5 14-13 14Z"/><path d="M5 19 13 11"/>',
+  user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  chevL: '<path d="m15 6-6 6 6 6"/>', chevR: '<path d="m9 6 6 6-6 6"/>',
+  drop: '<path d="M12 3.5s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11Z"/>',
+  moon: '<path d="M16 4a8.5 8.5 0 1 0 4.5 14A7 7 0 0 1 16 4Z"/>',
+  thermo: '<path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0Z"/><path d="M12 9v7"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7"/>',
+  pill: '<rect x="3.5" y="9" width="17" height="6" rx="3" transform="rotate(-35 12 12)"/><path d="m9.5 8.4 5 7.2"/>',
+  pulse: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+  shield: '<path d="M12 3.5 5 6v5.5c0 4.2 3 7.6 7 9 4-1.4 7-4.8 7-9V6Z"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M3 3l18 18M10.6 6a9.6 9.6 0 0 1 1.4-.1c6 0 9.5 6.1 9.5 6.1a17 17 0 0 1-3 3.7M6.6 6.6C4 8.3 2.5 12 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.3-1"/>',
+  sleep: '<path d="M4 18h16M6 18V9a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v9M9 12h6"/>',
+  spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  trash: '<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15Z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  cycle: '<path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4h-4"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5Z"/>',
+  palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1-.9-1.4-.9-2.4 0-1 .8-1.6 1.8-1.6h2.1a3.7 3.7 0 0 0 3.7-3.7C20.5 7 16.7 3.5 12 3.5Z"/><circle cx="8" cy="11" r="1"/><circle cx="11" cy="7.5" r="1"/><circle cx="15.5" cy="8" r="1"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+  download: '<path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/>',
+  upload: '<path d="M12 20V9M7 13.5l5-5 5 5M5 4h14"/>',
+  shoe: '<path d="M4 16c0-3 1-7 2-9l4 1c0 2 1 3 3 3.5l6 1.5c1 .3 1.5 1 1.5 2v1H4Z"/><path d="M4 19h17"/>',
 };
-/* 資料庫還沒加新欄位時，自動拿掉那個欄位重試，避免整筆存不進去 */
-async function withColumnFallback(obj, run) {
-  let o = { ...obj };
-  for (let i = 0; i < 4; i++) {
-    const { data, error } = await run(o);
-    if (!error) return data;
-    const m = /Could not find the '([^']+)' column/.exec(error.message || '') || /column "?([a-z_]+)"? .*does not exist/.exec(error.message || '');
-    if (!m || !(m[1] in o)) throw error;
-    console.warn('missing column, retry without', m[1]); S.missingCols = [...new Set([...(S.missingCols || []), m[1]])];
-    delete o[m[1]];
-  }
-  throw new Error('儲存失敗');
-}
+const svgI = (k, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[k] || ''}</svg>`;
+
+/* ---------- 選項 ---------- */
+const FLOW = [[0, '無'], [1, '點滴'], [2, '少'], [3, '中'], [4, '多']];
+const SYMPTOMS = ['經痛', '腰痠', '頭痛', '腹脹', '乳房脹痛', '痘痘', '疲倦', '噁心', '腹瀉', '便秘', '食慾增加', '失眠', '頭暈', '水腫'];
+const MOODS = ['開心', '平靜', '有活力', '溫柔', '敏感', '焦慮', '煩躁', '低落', '想哭', '想被抱抱'];
+const LIBIDO = [[0, '低'], [1, '普通'], [2, '高'], [3, '很高']];
+const LH = [['', '未測'], ['neg', '陰性'], ['faint', '弱陽'], ['pos', '陽性'], ['peak', '強陽']];
+const MUCUS = [['', '未看'], ['dry', '乾燥'], ['sticky', '黏稠'], ['creamy', '乳狀'], ['watery', '水狀'], ['eggwhite', '蛋清狀']];
+const PROTECT = [['condom', '保險套'], ['pill', '避孕藥'], ['iud', '子宮內避孕器'], ['withdrawal', '體外'], ['none', '無防護'], ['other', '其他']];
+const PROTECT_L = Object.fromEntries(PROTECT);
+const CONTRA = [['', '未設定'], ['pill', '口服避孕藥'], ['condom', '保險套'], ['iud', '子宮內避孕器（IUD）'], ['implant', '皮下植入'], ['injection', '避孕針'], ['ring', '陰道環'], ['patch', '避孕貼片'], ['natural', '自然週期法'], ['none', '目前沒有避孕']];
+const OV_L = { bbt: '體溫確認', lh: '排卵試紙', mucus: '分泌物判斷', predicted: '週期推算' };
+
+/* ---------- 資料層（雲端 Supabase／本機） ---------- */
+const LS = k => { try { return JSON.parse(localStorage.getItem('lun_' + k) || '[]'); } catch (_) { return []; } };
+const LSset = (k, v) => { try { localStorage.setItem('lun_' + k, JSON.stringify(v)); } catch (_) { } };
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+const KEYS = { day_logs: ['user_id', 'date'], contraception: ['user_id'], med_logs: ['med_id', 'date', 'slot'] };
 const DB = {
-  async list(t) {
-    if (!CLOUD) return local.load()[t] || [];
-    const { data, error } = await sb.from(t).select('*');
-    if (error) {
-      if (OPTIONAL_TABLES.includes(t)) { if (!S.missingTables.includes(t)) S.missingTables.push(t); return []; }
-      throw error;
-    }
-    S.missingTables = S.missingTables.filter(x => x !== t);
-    return data;
+  async list(t, owner) {
+    if (!CLOUD) return LS(t);
+    const { data, error } = await sb.from(t).select('*').eq('user_id', owner);
+    if (error) throw error; return data || [];
   },
   async insert(t, row) {
-    row = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...row };
-    if (!CLOUD) { const o = local.load(); (o[t] ||= []).push(row); local.save(o); return row; }
-    row.user_id = user.id;
-    return withColumnFallback(row, r => sb.from(t).insert(r).select().single());
+    if (!CLOUD) { const a = LS(t); const r = { id: uid(), user_id: 'local', created_by: 'local', created_at: new Date().toISOString(), ...row }; a.push(r); LSset(t, a); return r; }
+    const { data, error } = await sb.from(t).insert(row).select().single(); if (error) throw error; return data;
+  },
+  async upsert(t, row) {
+    if (!CLOUD) {
+      const a = LS(t), k = KEYS[t] || ['id']; row = { user_id: 'local', ...row };
+      const i = a.findIndex(x => k.every(f => x[f] === row[f]));
+      if (i >= 0) a[i] = { ...a[i], ...row }; else a.push({ id: uid(), ...row }); LSset(t, a); return row;
+    }
+    const { data, error } = await sb.from(t).upsert(row, { onConflict: (KEYS[t] || ['id']).join(',') }).select().single(); if (error) throw error; return data;
   },
   async update(t, id, patch) {
-    if (!CLOUD) { const o = local.load(); const r = (o[t] || []).find(x => x.id === id); Object.assign(r, patch); local.save(o); return r; }
-    return withColumnFallback(patch, p => sb.from(t).update(p).eq('id', id).select().single());
+    if (!CLOUD) { const a = LS(t); const i = a.findIndex(x => x.id === id); if (i >= 0) a[i] = { ...a[i], ...patch }; LSset(t, a); return a[i]; }
+    const { data, error } = await sb.from(t).update(patch).eq('id', id).select().single(); if (error) throw error; return data;
   },
-  async remove(t, id) {
-    if (!CLOUD) { const o = local.load(); o[t] = (o[t] || []).filter(x => x.id !== id); local.save(o); return; }
-    const { error } = await sb.from(t).delete().eq('id', id);
-    if (error) throw error;
+  async remove(t, match) {
+    if (!CLOUD) { LSset(t, LS(t).filter(x => !Object.entries(match).every(([k, v]) => x[k] === v))); return; }
+    let q = sb.from(t).delete(); for (const [k, v] of Object.entries(match)) q = q.eq(k, v);
+    const { error } = await q; if (error) throw error;
   },
 };
-async function add(t, row) { const r = await DB.insert(t, row); S[t].push(r); return r; }
-async function upd(t, id, patch) { const r = await DB.update(t, id, patch); const i = S[t].findIndex(x => x.id === id); if (i >= 0) S[t][i] = { ...S[t][i], ...r }; return S[t][i]; }
-async function del(t, id) { await DB.remove(t, id); S[t] = S[t].filter(x => x.id !== id); }
+
+/* ---------- 狀態 ---------- */
+const S = {
+  user: null, role: 'owner', ownerId: 'local', share: null, partners: [],
+  cycles: [], logs: [], intimacy: [], meds: [], medLogs: [], health: [], contra: null, calToken: null,
+  tab: 'today', month: null, recTab: 'cycle', mask: localStorage.getItem('lun_mask') === '1',
+};
+let A = Cycle.analyze([], []);
+const isOwner = () => S.role === 'owner';
+const logsBy = () => Object.fromEntries(S.logs.map(l => [String(l.date).slice(0, 10), l]));
+
 async function loadAll() {
-  const res = await Promise.all(TABLES.map(t => DB.list(t)));
-  TABLES.forEach((t, i) => S[t] = res[i] || []);
+  const o = S.ownerId;
+  const [cycles, intimacy, meds, medLogs, health] = await Promise.all(['cycles', 'intimacy', 'meds', 'med_logs', 'health'].map(t => DB.list(t, o).catch(() => [])));
+  Object.assign(S, { cycles, intimacy, meds, medLogs, health });
+  if (isOwner()) {
+    S.logs = await DB.list('day_logs', o).catch(() => []);
+    const c = await DB.list('contraception', o).catch(() => []); S.contra = c[0] || null;
+  } else { S.logs = []; S.contra = null; }
+  A = Cycle.analyze(S.cycles, S.logs, today(), aOpts());
+  if (isOwner()) syncOvulation();
 }
-
-/* ---------------- credit card cycles ----------------
- * closing_day = 每月結帳日（小月沒有該日則取月底）；due_day = 每月扣款日（空白 = 結帳日當天）
- * 帳單週期 = 上一個結帳日隔天 ~ 本次結帳日；扣款日 = 結帳日之後第一個 due_day。
- * 扣款日當天開啟 App，自動把那期帳單從扣款帳戶扣掉（同日結帳扣款的卡，結帳日隔天才扣，等當天消費都進來）。
- */
-function mkDay(y, m, day) { const last = new Date(y, m + 1, 0).getDate(); return new Date(y, m, Math.min(day, last)); }
-function cycleEndOnOrAfter(day, ref) {
-  let e = mkDay(ref.getFullYear(), ref.getMonth(), day);
-  if (ymd(e) < ymd(ref)) e = mkDay(ref.getFullYear(), ref.getMonth() + 1, day);
-  return e;
-}
-function nextCycleAfter(day, s) { const d = parseYmd(s); d.setDate(d.getDate() + 1); return cycleEndOnOrAfter(day, d); }
-function prevCycleEnd(day, e) { return mkDay(e.getFullYear(), e.getMonth() - 1, day); }
-const sameDayDebit = c => !c.due_day || +c.due_day === +c.closing_day;
-function dueFor(c, E) { // E: 'YYYY-MM-DD' 結帳日 → 扣款日 Date
-  if (sameDayDebit(c)) return parseYmd(E);
-  return nextCycleAfter(+c.due_day, E);
-}
-function debitReached(c, E, today = todayStr()) {
-  return sameDayDebit(c) ? E < today : ymd(dueFor(c, E)) <= today;
-}
-function initialSettled(c) { // 新增卡片時：最近一期「已經扣過款」的結帳日
-  const t = todayDate();
-  let e = cycleEndOnOrAfter(+c.closing_day, t);
-  if (!(ymd(e) < ymd(t))) e = prevCycleEnd(+c.closing_day, e);
-  for (let i = 0; i < 3 && !debitReached(c, ymd(e)); i++) e = prevCycleEnd(+c.closing_day, e);
-  return ymd(e);
-}
-/* 改結帳日的過渡期：cycle_start ~ first_close 之間原本的結帳日都不算（例如 9/10 起的消費全部併入 10/29 帳單） */
-const isSkippedClose = (c, E) => !!(c.first_close && c.cycle_start && E >= String(c.cycle_start).slice(0, 10) && E < String(c.first_close).slice(0, 10));
-function closeOnOrAfter(c, ref) { let e = cycleEndOnOrAfter(+c.closing_day, ref), g = 0; while (isSkippedClose(c, ymd(e)) && g++ < 12) e = nextCycleAfter(+c.closing_day, ymd(e)); return e; }
-function closeAfter(c, E) { let e = nextCycleAfter(+c.closing_day, E), g = 0; while (isSkippedClose(c, ymd(e)) && g++ < 12) e = nextCycleAfter(+c.closing_day, ymd(e)); return e; }
-function closeBefore(c, e) { let p = prevCycleEnd(+c.closing_day, e), g = 0; while (isSkippedClose(c, ymd(p)) && g++ < 12) p = prevCycleEnd(+c.closing_day, p); return p; }
-const txnDate = t => ymd(new Date(t.txn_at));
-const billAmt = t => num(t.amount_twd) + num(t.fee); // 帳單金額 = 消費 + 國外交易手續費
-const FEE_RE = /手續費|foreign\s*(transaction)?\s*fee|fx\s*fee/i;
-const NO_REWARD_RE = /手續費|現金回饋|回饋金|折抵|年費|利息|違約金/i;
-const isFeeRow = t => FEE_RE.test(t.merchant || '');
-const feeRate = c => (c && c.fx_fee != null && c.fx_fee !== '') ? num(c.fx_fee) : 1.5;
-const unsettled = cardId => S.transactions.filter(t => t.card_id === cardId && !t.settled_cycle);
-const byTimeDesc = (a, b) => b.txn_at.localeCompare(a.txn_at);
-const daysUntil = d => Math.round((d - todayDate()) / 864e5);
-
-/* 一張卡的狀態：open = 還在累計的本期；billed = 已結帳、等扣款的帳單；next = 下一次扣款 */
-function cardState(c) {
-  const today = todayDate();
-  const openEnd = closeOnOrAfter(c, today);
-  const prevClose = closeBefore(c, openEnd);
-  const openStart = new Date(prevClose); openStart.setDate(openStart.getDate() + 1);
-  const OE = ymd(openEnd);
-  if (c.cycle_start && OE === String(c.first_close || '').slice(0, 10)) { const cs = parseYmd(c.cycle_start); if (cs > openStart) openStart.setTime(cs.getTime()); }
-  const all = unsettled(c.id);
-  const lastClosed = ymd(prevClose);
-  const billedItems = all.filter(t => txnDate(t) <= lastClosed).sort(byTimeDesc);
-  const openItems = all.filter(t => txnDate(t) > lastClosed && txnDate(t) <= OE).sort(byTimeDesc);
-  const open = { start: ymd(openStart), end: OE, items: openItems, total: sum(openItems, billAmt), due: dueFor(c, OE) };
-  const billed = billedItems.length ? { end: lastClosed, items: billedItems, total: sum(billedItems, billAmt), due: dueFor(c, lastClosed) } : null;
-  const nb = billed || open;
-  const next = { date: nb.due, days: daysUntil(nb.due), amount: nb.total, final: !!billed, closeDays: daysUntil(openEnd) };
-  return { open, billed, next };
-}
-
-let settling = false;
-async function runSettlements() {
-  if (settling) return; settling = true;
-  const done = [];
-  try {
-    for (const c of S.cards) {
-      if (!c.last_settled) { await upd('cards', c.id, { last_settled: initialSettled(c) }); continue; }
-      let e = closeAfter(c, String(c.last_settled).slice(0, 10)), guard = 0;
-      while (debitReached(c, ymd(e)) && guard++ < 36) {
-        const E = ymd(e), D = ymd(dueFor(c, E));
-        const items = unsettled(c.id).filter(t => txnDate(t) <= E);
-        const amt = Math.round(sum(items, billAmt) * 100) / 100;
-        if (items.length) {
-          let ok = true;
-          try {
-            await add('settlements', { card_id: c.id, cycle_end: E, amount: amt, account_id: c.debit_account_id || null });
-          } catch (err) { ok = false; console.warn('settlement exists', err); } // 另一台裝置已扣過
-          if (ok) {
-            const acc = S.accounts.find(a => a.id === c.debit_account_id);
-            if (acc) {
-              const delta = -fromTWD(amt, acc.currency);
-              const after = Math.round((num(acc.balance) + delta) * 100) / 100;
-              await upd('accounts', acc.id, { balance: after });
-              await add('balance_log', { account_id: acc.id, delta, balance_after: after, note: `${c.name} ${md(E)} 帳單，${md(D)} 扣款` });
-            }
-            for (const t of items) await upd('transactions', t.id, { settled_cycle: E });
-            done.push(`${c.name} ${md(D)} 扣款 ${money(amt)}`);
-          }
-        }
-        await upd('cards', c.id, { last_settled: E });
-        e = closeAfter(c, E);
-      }
+/* 記錄者端：把算出的排卵日寫回週期，伴侶那邊才看得到精準的排卵日 */
+async function syncOvulation() {
+  for (const c of A.cycles) {
+    const m = c.ov.method, ok = m === 'bbt' || m === 'lh' || m === 'mucus';
+    const want = ok ? ymd(c.ov.date) : null, wantM = ok ? m : null;
+    const have = c.ovulation_date ? String(c.ovulation_date).slice(0, 10) : null;
+    if (c.id && (want !== have || (c.ovulation_method || null) !== wantM) && (want || have)) {
+      try { await DB.update('cycles', c.id, { ovulation_date: want, ovulation_method: wantM }); const s = S.cycles.find(x => x.id === c.id); if (s) Object.assign(s, { ovulation_date: want, ovulation_method: wantM }); } catch (_) { }
     }
-  } finally { settling = false; }
-  if (CLOUD && done.length) await loadAll();
-  if (done.length) toast('已自動入帳：' + done.join('、'), 5000);
+  }
 }
 
-/* ---------------- market data ---------------- */
-async function loadFX(force) {
-  const c = !force && cacheGet('fx', 6 * 3600e3);
-  if (c) { S.fx = c; return; }
-  try {
-    const j = await (await fetch('https://open.er-api.com/v6/latest/TWD')).json();
-    if (j.rates) { S.fx = j.rates; cacheSet('fx', j.rates); }
-  } catch (e) { console.warn('fx', e); }
-}
-
-const KNOWN_CG = { BTC: 'bitcoin', ETH: 'ethereum', USDT: 'tether', USDC: 'usd-coin', BNB: 'binancecoin', SOL: 'solana', XRP: 'ripple', DOGE: 'dogecoin', ADA: 'cardano', TRX: 'tron', TON: 'the-open-network', POL: 'polygon-ecosystem-token', AVAX: 'avalanche-2', LINK: 'chainlink', DOT: 'polkadot', SUI: 'sui', FDUSD: 'first-digital-usd', DAI: 'dai' };
-async function findCgId(symbol) {
-  const s = symbol.toUpperCase();
-  if (KNOWN_CG[s]) return KNOWN_CG[s];
-  try {
-    const j = await (await fetch('https://api.coingecko.com/api/v3/search?query=' + encodeURIComponent(symbol))).json();
-    const hits = (j.coins || []).filter(c => c.symbol.toUpperCase() === s).sort((a, b) => (a.market_cap_rank || 1e9) - (b.market_cap_rank || 1e9));
-    return hits[0]?.id || null;
-  } catch (_) { return null; }
-}
-function allCgIds() {
-  const ids = S.crypto_holdings.map(h => h.cg_id);
-  for (const k in S.walletBal) for (const b of S.walletBal[k].items || []) ids.push(b.cg);
-  return [...new Set(ids.filter(Boolean))].sort();
-}
-async function loadPrices(force) {
-  const ids = allCgIds(); if (!ids.length) return;
-  const key = 'cg_' + ids.join(',');
-  const c = !force && cacheGet(key, 120e3);
-  if (c) { S.prices = c; return; }
-  try {
-    const j = await (await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=twd&include_24hr_change=true`)).json();
-    const p = {}; for (const id in j) p[id] = { twd: j[id].twd, chg: j[id].twd_24h_change };
-    if (Object.keys(p).length) { S.prices = p; cacheSet(key, p); }
-  } catch (e) { toast('加密貨幣報價暫時抓不到（CoinGecko 限流時稍等一分鐘）'); }
-}
-
-async function loadQuotes(force) {
-  const codes = [...new Set(S.stocks.map(s => String(s.code).trim().toUpperCase()))].filter(Boolean).sort();
-  if (!codes.length || !CLOUD) return;
-  const key = 'twq_' + codes.join(',');
-  const c = !force && cacheGet(key, 60e3);
-  if (c) { S.quotes = c; return; }
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const r = await fetch(`${CFG.supabaseUrl}/functions/v1/tw-quote?codes=${codes.join(',')}`, {
-      headers: { Authorization: 'Bearer ' + session.access_token, apikey: CFG.supabaseAnonKey },
-    });
-    if (!r.ok) throw new Error(r.status);
-    S.quotes = await r.json(); cacheSet(key, S.quotes);
-  } catch (e) { toast('台股報價暫時抓不到，先用成本價計算'); }
-}
-
-/* ---------------- on-chain wallets (只讀公開地址) ---------------- */
-const CHAINS = {
-  eth: { label: 'Ethereum', rpc: 'https://ethereum-rpc.publicnode.com', native: ['ETH', 'ethereum'],
-    tokens: [['USDT', 'tether', '0xdAC17F958D2ee523a2206206994597C13D831ec7', 6], ['USDC', 'usd-coin', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 6]] },
-  bsc: { label: 'BNB Chain', rpc: 'https://bsc-rpc.publicnode.com', native: ['BNB', 'binancecoin'],
-    tokens: [['USDT', 'tether', '0x55d398326f99059fF775485246999027B3197955', 18], ['USDC', 'usd-coin', '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 18]] },
-  arb: { label: 'Arbitrum', rpc: 'https://arbitrum-one-rpc.publicnode.com', native: ['ETH', 'ethereum'],
-    tokens: [['USDC', 'usd-coin', '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 6], ['USDT', 'tether', '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 6]] },
-  base: { label: 'Base', rpc: 'https://base-rpc.publicnode.com', native: ['ETH', 'ethereum'],
-    tokens: [['USDC', 'usd-coin', '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 6]] },
-  polygon: { label: 'Polygon', rpc: 'https://polygon-bor-rpc.publicnode.com', native: ['POL', 'polygon-ecosystem-token'],
-    tokens: [['USDC', 'usd-coin', '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', 6], ['USDT', 'tether', '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 6]] },
-};
-async function rpc(url, method, params) {
-  const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
-  const j = await r.json(); if (j.error) throw new Error(j.error.message); return j.result;
-}
-function fromHex(h, dec) {
-  if (!h || h === '0x') return 0;
-  const b = BigInt(h), base = 10n ** BigInt(dec);
-  return Number(b / base) + Number(b % base) / Number(base);
-}
-async function scanEvm(addr) {
-  const out = [];
-  const data = '0x70a08231' + addr.toLowerCase().replace(/^0x/, '').padStart(64, '0');
-  await Promise.all(Object.values(CHAINS).map(async c => {
-    try {
-      const q = fromHex(await rpc(c.rpc, 'eth_getBalance', [addr, 'latest']), 18);
-      if (q > 1e-9) out.push({ symbol: c.native[0], cg: c.native[1], qty: q, chain: c.label });
-      for (const [sym, cg, ca, dec] of c.tokens) {
-        const tq = fromHex(await rpc(c.rpc, 'eth_call', [{ to: ca, data }, 'latest']), dec);
-        if (tq > 1e-9) out.push({ symbol: sym, cg, qty: tq, chain: c.label });
-      }
-    } catch (e) { console.warn(c.label, e); }
+/* ---------- 共用元件 ---------- */
+function toast(msg, ms = 2400) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms); }
+function sheet(title, body, { onSave, saveLabel = '儲存', onDelete } = {}) {
+  const w = $('#sheet');
+  w.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="grab"></div>
+    <div class="sheet-h"><h3>${esc(title)}</h3><button class="x" data-close aria-label="關閉">×</button></div>
+    <form class="sheet-f">${body}
+      <div class="actions">${onDelete ? '<button type="button" class="btn danger" data-del>刪除</button>' : ''}${onSave ? `<button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit">${saveLabel}</button>` : ''}</div>
+    </form></div>`;
+  w.hidden = false;
+  const f = $('form', w);
+  w.onclick = e => { if (e.target === w || e.target.closest('[data-close]')) closeSheet(); };
+  f.onsubmit = async e => { e.preventDefault(); if (!onSave) return; const btn = $('[type=submit]', f); btn.disabled = true; try { if (await onSave(f) !== false) closeSheet(); } catch (err) { toast('儲存失敗：' + (err.message || err)); } btn.disabled = false; };
+  if (onDelete) $('[data-del]', f).onclick = async () => { if (!confirm('確定要刪除嗎？')) return; try { await onDelete(); closeSheet(); } catch (err) { toast('刪除失敗：' + err.message); } };
+  // 單選／多選標籤
+  f.querySelectorAll('[data-pick]').forEach(g => g.addEventListener('click', e => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    if (g.dataset.multi) b.classList.toggle('on'); else { g.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); }
   }));
+  return f;
+}
+function closeSheet() { const w = $('#sheet'); w.hidden = true; w.innerHTML = ''; }
+const picked = (f, k) => [...f.querySelectorAll(`[data-pick="${k}"] button.on`)].map(b => b.dataset.v);
+const pick1 = (f, k) => picked(f, k)[0] ?? '';
+const chips = (k, opts, sel, { multi = false, cls = '' } = {}) => `<div class="chips" data-pick="${k}" ${multi ? 'data-multi="1"' : ''}>${opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; const on = multi ? (sel || []).includes(v) : String(sel ?? '') === String(v); return `<button type="button" class="chip ${cls}${on ? ' on' : ''}" data-v="${esc(v)}">${esc(l)}</button>`; }).join('')}</div>`;
+
+/* ---------- 今天 ---------- */
+function phaseOf(d = today()) {
+  const c = A.current; if (!c) return null;
+  if (c.late > 0) return { k: 'late', t: `月經晚了 ${c.late} 天` };
+  const st = Cycle.dayStatus(A, d, logsBy());
+  if (st.period || c.inPeriod) return { k: 'period', t: '經期中' };
+  if (st.ovulation) return { k: 'ovu', t: st.ovPredicted ? '預計排卵日' : '排卵日' };
+  if (st.fertile) return { k: 'fertile', t: '易孕期' };
+  if (d > c.ovulation) return { k: 'luteal', t: '黃體期' };
+  return { k: 'follicular', t: '濾泡期' };
+}
+function ringSVG() {
+  const c = A.current, L = Math.max(Math.round(A.avgCycle), c ? c.cycleDay : 0, 21);
+  const R = 120, P = a => [R * Math.sin(a), -R * Math.cos(a)], f = n => n.toFixed(1);
+  const ang = day => (day - 1) / L * Math.PI * 2;
+  const arc = (d0, d1, cls) => { if (d1 < d0) return ''; const a0 = ang(d0) + .02, a1 = ang(d1 + 1) - .02; const [x0, y0] = P(a0), [x1, y1] = P(a1); return `<path class="seg ${cls}" d="M${f(x0)} ${f(y0)}A${R} ${R} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${f(x1)} ${f(y1)}"/>`; };
+  let segs = '', ticks = '', mark = '';
+  if (c) {
+    const pe = Math.round(A.avgPeriod), last = A.cycles[A.cycles.length - 1];
+    const pEnd = last && last.e ? diff(last.e, c.start) + 1 : pe;
+    const fs = diff(c.fertileStart, c.start) + 1, fe = diff(c.fertileEnd, c.start) + 1, ov = diff(c.ovulation, c.start) + 1;
+    segs += arc(1, pEnd, 'period') + arc(Math.max(fs, pEnd + 1), Math.min(fe, L), 'fertile') + arc(Math.max(fe + 1, pEnd + 1), L, 'luteal');
+    const [ox, oy] = P(ang(ov) + Math.PI / L);
+    mark += `<circle cx="${f(ox)}" cy="${f(oy)}" r="9" class="ovu"/><path transform="translate(${f(ox)} ${f(oy)}) scale(.36)" d="M0 -12 3 -3 12 0 3 3 0 12 -3 3 -12 0 -3 -3Z" fill="#fff"/>`;
+    const td = Math.min(c.cycleDay, L), [tx, ty] = P(ang(td) + Math.PI / L);
+    mark += `<circle cx="${f(tx)}" cy="${f(ty)}" r="12" class="today"/>`;
+  }
+  for (let i = 0; i < L; i++) { const a = ang(i + 1); const [x0, y0] = [(R + 16) * Math.sin(a), -(R + 16) * Math.cos(a)], [x1, y1] = [(R + 20) * Math.sin(a), -(R + 20) * Math.cos(a)]; ticks += `<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" class="tick"/>`; }
+  const lbl = [1, Math.round(L / 4), Math.round(L / 2), Math.round(L * 3 / 4)].map(d => { const a = ang(d) + Math.PI / L; return `<text x="${f((R + 30) * Math.sin(a))}" y="${f(-(R + 30) * Math.cos(a))}" class="lbl">${d}</text>`; }).join('');
+  return `<svg class="ring" viewBox="-160 -160 320 320" role="img" aria-label="本次週期示意"><circle r="${R}" class="base"/>${ticks}${lbl}${segs}${mark}</svg>`;
+}
+function rhythmTiles() {
+  const c = A.current;
+  const ovBadge = c ? (c.ovMethod === 'bbt' ? '<span class="badge ok">體溫確認</span>' : c.ovMethod === 'lh' ? '<span class="badge mid">試紙 ±1 天</span>' : c.ovMethod === 'mucus' ? '<span class="badge mid">分泌物 ±2 天</span>' : `<span class="badge est">推算 ±${c.ovRange} 天</span>`) : '';
+  const nd = c ? diff(c.nextStart, today()) : null;
+  return `<div class="rhythm">
+    <div class="rt" style="--tc:var(--plum)"><div class="k">平均週期長度</div><div class="v">${r1(A.avgCycle)}<small>天</small></div><div class="s">${A.samples ? `近 ${A.samples} 次 ${A.minCycle}–${A.maxCycle} 天` : '還沒有完整週期，先以 28 天計'}</div></div>
+    <div class="rt" style="--tc:var(--period)"><div class="k">平均生理期</div><div class="v">${r1(A.avgPeriod)}<small>天</small></div><div class="s">${A.cycles.some(x => x.e) ? '依記錄的結束日計算' : '記下月經結束日會更準'}</div></div>
+    <div class="rt" style="--tc:var(--period-mid)"><div class="k">下次月經</div><div class="v">${c ? md(c.nextStart) : '—'}</div><div class="s">${c ? (nd > 0 ? `${nd} 天後・週${WD[c.nextStart.getDay()]}` : nd === 0 ? '預計今天' : `已晚 ${-nd} 天`) : '記錄第一次月經後開始預測'}</div></div>
+    <div class="rt" style="--tc:var(--ovu)"><div class="k">預計排卵日</div><div class="v">${c ? md(c.ovulation) : '—'}</div><div class="s">${ovBadge}${c ? ` 易孕 ${md(c.fertileStart)}–${md(c.fertileEnd)}` : ''}</div></div>
+  </div>`;
+}
+function precisionTip() {
+  const c = A.current; if (!c || !isOwner()) return '';
+  if (c.ovMethod === 'bbt') return `<div class="tip">${svgI('check')}<div>體溫在 <b>${md(c.bbt.firstHigh)}</b> 起連續升高，排卵確認在 <b>${md(c.ovulation)}</b>。下次月經改用妳的黃體期（${A.luteal} 天${A.lutealSamples ? '・個人數據' : '・預設'}）推算，會比平均值準。</div></div>`;
+  if (c.ovMethod === 'lh') return `<div class="tip">${svgI('spark')}<div>排卵試紙在 <b>${md(add(c.ovulation, -1))}</b> 出現陽性，通常 24–36 小時內排卵。持續量體溫，升溫 3 天後就能<b>確認</b>。</div></div>`;
+  return `<div class="tip">${svgI('thermo')}<div>目前排卵日是用週期推算（±${c.ovRange} 天）。想精準到當天：<b>每天起床、下床前量基礎體溫</b>，並在 ${md(add(c.fertileStart, -1))} 左右開始測<b>排卵試紙</b>，月汐會自動判斷。</div></div>`;
+}
+function medsToday(d = today()) {
+  const k = ymd(d), wd = ((d.getDay() + 6) % 7) + 1, out = [];
+  for (const m of S.meds) {
+    if (m.active === false) continue;
+    if (m.start_date && toD(m.start_date) > d) continue;
+    if (m.end_date && toD(m.end_date) < d) continue;
+    if (m.weekdays && m.weekdays.length && !m.weekdays.includes(wd)) continue;
+    for (const t of (m.times && m.times.length ? m.times : ['09:00'])) out.push({ m, t, done: S.medLogs.some(l => l.med_id === m.id && String(l.date).slice(0, 10) === k && l.slot === t) });
+  }
+  return out.sort((a, b) => a.t.localeCompare(b.t));
+}
+function medRows(list, d = today()) {
+  if (!list.length) return `<div class="empty">今天沒有要吃的藥${isOwner() ? '，到「健康」新增提醒' : ''}</div>`;
+  return `<div class="list">${list.map(x => `<div class="li"><span class="ic" style="--c:var(--plum);--c-soft:var(--plum-soft)">${svgI('pill')}</span>
+    <div class="g"><div class="t">${esc(x.m.name)}${x.m.dose ? ` <span class="muted small">${esc(x.m.dose)}</span>` : ''}</div><div class="m">${x.t}${x.m.kind === 'contraceptive' ? '・避孕藥' : x.m.kind === 'supplement' ? '・保健品' : ''}</div></div>
+    ${isOwner() ? `<button class="chk${x.done ? ' on' : ''}" data-act="med-tick" data-id="${x.m.id}" data-slot="${x.t}" data-date="${ymd(d)}" aria-label="${x.done ? '取消已服用' : '標記已服用'}">${svgI('check')}</button>` : `<span class="badge ${x.done ? 'ok' : 'est'}">${x.done ? '已服用' : '未服用'}</span>`}</div>`).join('')}</div>`;
+}
+function logSummary(l) {
+  const bits = [];
+  if (l.flow > 0) bits.push(`經量${FLOW[l.flow][1]}`);
+  if (l.bbt) bits.push(`${(+l.bbt).toFixed(2)}°C`);
+  if (l.lh) bits.push('試紙' + (LH.find(x => x[0] === l.lh) || [, ''])[1]);
+  if (l.mucus) bits.push((MUCUS.find(x => x[0] === l.mucus) || [, ''])[1]);
+  if (l.sleep_q) bits.push(`睡眠 ${'★'.repeat(l.sleep_q)}`);
+  return bits.join('・');
+}
+const VIEWS = {};
+VIEWS.today = () => {
+  const c = A.current, ph = phaseOf();
+  if (!c) {
+    return `<section class="card hero"><div class="ring-box">${ringSVG()}<div class="ring-c"><span class="k">歡迎來到月汐</span><span class="d" style="font-size:40px">🌙</span><span class="hero-sub">${isOwner() ? '記下最近一次月經的第一天，就會開始幫妳預測' : '她還沒有開始記錄，等她記下第一次月經就會出現'}</span></div></div>
+      ${isOwner() ? '<button class="btn period block" data-act="period-start">記錄月經開始日</button>' : ''}</section>${isOwner() ? '' : intimacyBlock(3)}`;
+  }
+  const nd = diff(c.nextStart, today()), od = diff(c.ovulation, today());
+  const sub = ph.k === 'period' ? `預計 ${md(add(c.start, Math.round(A.avgPeriod) - 1))} 結束` :
+    ph.k === 'late' ? '可以考慮驗孕，或記下近期壓力、作息變化' :
+    od > 0 && od <= 10 ? `距離排卵約 <b>${od}</b> 天・易孕期 ${md(c.fertileStart)} 開始` :
+    `距離下次月經 <b>${Math.max(nd, 0)}</b> 天・${mdw(c.nextStart)}`;
+  const logT = S.logs.find(l => String(l.date).slice(0, 10) === ymd(today()));
+  return `<section class="card hero">
+      <div class="ring-box">${ringSVG()}<div class="ring-c"><span class="k">${isOwner() ? '週期第' : '她的週期第'}</span><span class="d">${c.cycleDay}<small>天</small></span><span class="ph ${ph.k}">${ph.t}</span></div></div>
+      <div class="hero-sub">${sub}</div>
+      <div class="legend"><span><i style="background:var(--period-mid)"></i>經期</span><span><i style="background:#C9BDEB"></i>易孕期</span><span><i style="background:var(--ovu)"></i>排卵日</span><span><i style="background:var(--luteal-soft)"></i>黃體期</span></div>
+      ${isOwner() ? `<div class="row-btns">${c.inPeriod && A.cycles[A.cycles.length - 1] && !A.cycles[A.cycles.length - 1].e ? '<button class="btn ghost" data-act="period-end">月經結束了</button>' : '<button class="btn period" data-act="period-start">月經來了</button>'}<button class="btn primary" data-act="log" data-date="${ymd(today())}">${logT ? '修改今天' : '記錄今天'}</button></div>` : `<div class="row-btns"><button class="btn primary" data-act="add-intimacy">＋ 親密紀錄</button></div>`}
+    </section>
+    <div class="sec"><h2>節奏</h2><span class="r">${A.irregular ? '週期變化較大，預測僅供參考' : ''}</span></div>
+    ${rhythmTiles()}${precisionTip()}
+    <div class="sec"><h2>今日用藥</h2><span class="r">${medsToday().filter(x => x.done).length}/${medsToday().length}</span></div>
+    <section class="card">${medRows(medsToday())}</section>
+    ${isOwner() ? `<div class="sec"><h2>近期紀錄</h2><button class="btn small ghost" data-act="tab" data-tab="records">全部</button></div>
+    <section class="card">${recentLogs(4)}</section>` : intimacyBlock(3)}`;
+};
+function recentLogs(n) {
+  const ls = S.logs.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, n);
+  if (!ls.length) return '<div class="empty">還沒有每日紀錄。點「記錄今天」開始，記得越多預測越準</div>';
+  return `<div class="list">${ls.map(l => `<div class="li click" data-act="log" data-date="${String(l.date).slice(0, 10)}">
+    <span class="ic" style="--c:${l.flow > 0 ? 'var(--period)' : 'var(--plum)'};--c-soft:${l.flow > 0 ? 'var(--period-soft)' : 'var(--plum-soft)'}">${svgI(l.flow > 0 ? 'drop' : 'moon')}</span>
+    <div class="g"><div class="t">${mdw(l.date)}</div><div class="m">${esc(logSummary(l) || '')}</div>
+    <div>${[...(l.symptoms || []), ...(l.moods || [])].slice(0, 5).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</div></div>${svgI('chevR')}</div>`).join('')}</div>`;
+}
+function intimacyBlock(n) {
+  const ls = S.intimacy.slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, n);
+  return `<div class="sec"><h2>親密紀錄</h2><button class="btn small ghost" data-act="add-intimacy">＋ 新增</button></div>
+    <section class="card sens">${ls.length ? `<div class="list">${ls.map(intimacyRow).join('')}</div>` : '<div class="empty">還沒有紀錄</div>'}</section>`;
+}
+function intimacyRow(x) {
+  const d = new Date(x.at), st = Cycle.dayStatus(A, d, logsBy());
+  const mine = x.created_by === (S.user ? S.user.id : 'local');
+  const ph = st.period ? '經期' : st.ovulation ? '排卵日' : st.fertile ? '易孕期' : '';
+  return `<div class="li${mine || isOwner() ? ' click' : ''}" ${mine || isOwner() ? `data-act="edit-intimacy" data-id="${x.id}"` : ''}><span class="ic" style="--c:#C2557A;--c-soft:#F8E1EA">${svgI('heart')}</span>
+    <div class="g"><div class="t">${mdw(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}</div><div class="m">${esc(PROTECT_L[x.protection] || '未填防護方式')}${x.note ? '・' + esc(x.note) : ''}</div></div>
+    ${ph ? `<span class="badge ${ph === '易孕期' || ph === '排卵日' ? 'mid' : ''}">${ph}</span>` : ''}</div>`;
+}
+
+/* ---------- 月曆 ---------- */
+VIEWS.cal = () => {
+  const m = S.month || new Date(today().getFullYear(), today().getMonth(), 1);
+  const first = new Date(m.getFullYear(), m.getMonth(), 1), startW = first.getDay();
+  const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+  const lb = logsBy(), td = ymd(today());
+  const intimDays = new Set(S.intimacy.map(x => ymd(new Date(x.at))));
+  let cells = WD.map(w => `<div class="wd">${w}</div>`).join('');
+  for (let i = 0; i < startW; i++) { const d = add(first, i - startW); cells += `<button class="cd out" data-act="day" data-date="${ymd(d)}">${d.getDate()}</button>`; }
+  for (let i = 1; i <= days; i++) {
+    const d = new Date(m.getFullYear(), m.getMonth(), i), k = ymd(d), st = Cycle.dayStatus(A, d, lb);
+    const cls = [st.period ? 'period' : st.ovulation ? ('ovu' + (st.ovPredicted ? ' pred' : '')) : st.predictedPeriod ? 'pp' : st.fertile ? 'fertile' : '', k === td ? 'today' : ''].join(' ');
+    const dots = `${st.logged && isOwner() ? '<i></i>' : ''}${intimDays.has(k) ? '<i class="h"></i>' : ''}`;
+    cells += `<button class="cd ${cls}" data-act="day" data-date="${k}" aria-label="${md(d)}">${i}${dots ? `<span class="dots">${dots}</span>` : ''}</button>`;
+  }
+  return `<section class="card"><div class="cal-head"><h3>${m.getFullYear()} 年 ${m.getMonth() + 1} 月</h3><div class="nb"><button class="cal-nav" data-act="month" data-d="-1" aria-label="上個月">${svgI('chevL')}</button><button class="cal-nav" data-act="month" data-d="0" aria-label="回到本月">${svgI('moon')}</button><button class="cal-nav" data-act="month" data-d="1" aria-label="下個月">${svgI('chevR')}</button></div></div>
+    <div class="cal">${cells}</div>
+    <div class="legend"><span><i style="background:var(--period)"></i>經期</span><span><i style="background:#fff;box-shadow:inset 0 0 0 2px var(--period-mid)"></i>預測經期</span><span><i style="background:var(--fertile-soft)"></i>易孕期</span><span><i style="background:var(--ovu)"></i>排卵日</span><span><i style="background:#E06C88"></i>親密</span></div></section>
+    ${isOwner() ? bbtChart() : ''}
+    ${A.future.length ? `<div class="sec"><h2>接下來 3 次</h2></div><section class="card"><div class="list">${A.future.map(f => `<div class="li"><span class="ic" style="--c:var(--period);--c-soft:var(--period-soft)">${svgI('drop')}</span><div class="g"><div class="t">月經 ${mdw(f.start)}</div><div class="m">排卵約 ${md(f.ovulation)}・易孕 ${md(f.fertileStart)}–${md(f.fertileEnd)}</div></div><span class="r">${diff(f.start, today())} 天後</span></div>`).join('')}</div></section>` : ''}`;
+};
+function bbtChart() {
+  const c = A.current; if (!c) return '';
+  const end = add(c.start, Math.max(Math.round(A.avgCycle), c.cycleDay) - 1);
+  const pts = S.logs.filter(l => l.bbt && toD(l.date) >= c.start && toD(l.date) <= end).map(l => ({ d: diff(l.date, c.start) + 1, t: +l.bbt })).sort((a, b) => a.d - b.d);
+  const N = diff(end, c.start) + 1, W = 340, H = 170, L = 30, R = 8, T = 10, B = 22;
+  if (pts.length < 2) return `<div class="sec"><h2>基礎體溫</h2></div><section class="card"><div class="empty">${svgI('thermo')}<br>每天起床、下床前量體溫並記錄。<br>累積到升溫後，月汐會畫出曲線並確認排卵日。</div></section>`;
+  const ts = pts.map(p => p.t), lo = Math.min(...ts, c.bbt ? c.bbt.coverline : 99) - .15, hi = Math.max(...ts) + .15;
+  const X = d => L + (W - L - R) * (d - 1) / Math.max(1, N - 1), Y = t => T + (H - T - B) * (1 - (t - lo) / (hi - lo));
+  const grid = [0, 1, 2, 3].map(k => { const t = lo + (hi - lo) * k / 3; return `<line x1="${L}" x2="${W - R}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}" class="grid"/><text x="${L - 4}" y="${(Y(t) + 3).toFixed(1)}" class="yl">${t.toFixed(2)}</text>`; }).join('');
+  const pEnd = Math.round(A.avgPeriod), fs = diff(c.fertileStart, c.start) + 1, fe = diff(c.fertileEnd, c.start) + 1, ov = diff(c.ovulation, c.start) + 1;
+  const bands = `<rect class="pband" x="${X(1)}" y="${T}" width="${Math.max(0, X(pEnd) - X(1))}" height="${H - T - B}"/><rect class="fband" x="${X(fs)}" y="${T}" width="${Math.max(0, X(fe) - X(fs))}" height="${H - T - B}"/>`;
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.d).toFixed(1)} ${Y(p.t).toFixed(1)}`).join(' ');
+  const cover = c.bbt ? `<line class="cover" x1="${L}" x2="${W - R}" y1="${Y(c.bbt.coverline).toFixed(1)}" y2="${Y(c.bbt.coverline).toFixed(1)}"/>` : '';
+  const ovl = `<line class="ovl" x1="${X(ov)}" x2="${X(ov)}" y1="${T}" y2="${H - B}" ${c.ovMethod === 'predicted' ? 'stroke-dasharray="3 3"' : ''}/>`;
+  const firstHigh = c.bbt ? diff(c.bbt.firstHigh, c.start) + 1 : 999;
+  const dots = pts.map(p => `<circle cx="${X(p.d).toFixed(1)}" cy="${Y(p.t).toFixed(1)}" r="3.4" class="pt${p.d >= firstHigh ? ' hi' : ''}"/>`).join('');
+  const xl = [1, 7, 14, 21, 28, 35].filter(d => d <= N).map(d => `<text x="${X(d).toFixed(1)}" y="${H - 6}" class="xl">第${d}天</text>`).join('');
+  return `<div class="sec"><h2>基礎體溫</h2><span class="r">${c.bbt ? `覆蓋線 ${c.bbt.coverline.toFixed(2)}°C` : '尚未升溫'}</span></div>
+    <section class="card"><svg class="bbt" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="本週期基礎體溫">${bands}${grid}${cover}${ovl}<path class="ln" d="${line}"/>${dots}${xl}</svg>
+    <p class="note">左邊色帶＝經期、中間色帶＝易孕期、直線＝排卵日（虛線為推算）。連續 3 天高於前 6 天最高溫（金色虛線），且第 3 天高 0.2°C 以上，就判定已排卵。</p></section>`;
+}
+
+/* ---------- 紀錄 ---------- */
+VIEWS.records = () => {
+  const tabs = isOwner() ? [['cycle', '經期紀錄'], ['body', '症狀・心情'], ['intim', '親密']] : [['cycle', '經期紀錄'], ['intim', '親密']];
+  if (!tabs.some(t => t[0] === S.recTab)) S.recTab = 'cycle';
+  const seg = `<div class="chips" style="margin:6px 0 4px">${tabs.map(([k, l]) => `<button class="chip${S.recTab === k ? ' on' : ''}" data-act="rec-tab" data-k="${k}">${l}</button>`).join('')}</div>`;
+  if (S.recTab === 'cycle') {
+    const cs = A.cycles.slice().reverse();
+    return seg + `<div class="sec"><h2>經期紀錄</h2>${isOwner() ? '<button class="btn small ghost" data-act="period-start">＋ 新增</button>' : ''}</div>
+      <section class="card">${cs.length ? `<div class="list">${cs.map(c => `<div class="li${isOwner() ? ' click' : ''}" ${isOwner() ? `data-act="edit-cycle" data-id="${c.id}"` : ''}>
+        <span class="ic" style="--c:var(--period);--c-soft:var(--period-soft)">${svgI('drop')}</span>
+        <div class="g"><div class="t">${md(c.s)}${c.e ? ` – ${md(c.e)}` : ' 開始'}</div><div class="m">${c.e ? `經期 ${diff(c.e, c.s) + 1} 天` : '經期進行中'}${c.ov.date ? `・排卵 ${md(c.ov.date)}（${OV_L[c.ov.method] || ''}）` : ''}</div></div>
+        <span class="r"><b>${c.length || '—'}</b>${c.length ? '天週期' : '本次'}</span></div>`).join('')}</div>` : '<div class="empty">還沒有經期紀錄</div>'}</section>
+      ${A.samples ? `<div class="sec"><h2>週期變化</h2></div><section class="card">${cycleBars()}</section>` : ''}`;
+  }
+  if (S.recTab === 'intim') {
+    const ls = S.intimacy.slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const n30 = ls.filter(x => diff(today(), new Date(x.at)) < 30).length;
+    return seg + `<div class="sec"><h2>親密紀錄</h2><button class="btn small ghost" data-act="add-intimacy">＋ 新增</button></div>
+      <section class="card sens">${ls.length ? `<p class="note" style="margin-top:0">近 30 天 ${n30} 次${ls.some(x => x.protection === 'none') ? '・有無防護紀錄，易孕期請特別留意' : ''}</p><div class="list">${ls.map(intimacyRow).join('')}</div>` : '<div class="empty">還沒有紀錄</div>'}</section>`;
+  }
+  // 症狀・心情（只有本人）
+  const since = add(today(), -90), ls = S.logs.filter(l => toD(l.date) >= since);
+  const count = k => { const m = {}; ls.forEach(l => (l[k] || []).forEach(s => m[s] = (m[s] || 0) + 1)); return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6); };
+  const bars = arr => { const mx = Math.max(1, ...arr.map(x => x[1])); return arr.length ? `<div class="stat-bars">${arr.map(([k, v]) => `<div class="sb"><span>${esc(k)}</span><span class="bar"><i style="width:${v / mx * 100}%"></i></span><span>${v}</span></div>`).join('')}</div>` : '<div class="empty">近 90 天沒有紀錄</div>'; };
+  const sl = ls.filter(l => l.sleep_q), sh = ls.filter(l => l.sleep_h);
+  const lib = ph => { const xs = ls.filter(l => l.libido != null && l.libido !== '' && (ph ? Cycle.dayStatus(A, l.date).fertile || Cycle.dayStatus(A, l.date).ovulation : !(Cycle.dayStatus(A, l.date).fertile || Cycle.dayStatus(A, l.date).ovulation))).map(l => +l.libido); return xs.length ? r1(xs.reduce((s, x) => s + x, 0) / xs.length) : '—'; };
+  return seg + `<div class="sec"><h2>常見症狀</h2><span class="r">近 90 天</span></div><section class="card">${bars(count('symptoms'))}</section>
+    <div class="sec"><h2>心情</h2></div><section class="card">${bars(count('moods'))}</section>
+    <div class="rhythm"><div class="rt" style="--tc:var(--luteal)"><div class="k">平均睡眠品質</div><div class="v">${sl.length ? r1(sl.reduce((s, l) => s + +l.sleep_q, 0) / sl.length) : '—'}<small>/ 5</small></div><div class="s">${sh.length ? `平均 ${r1(sh.reduce((s, l) => s + +l.sleep_h, 0) / sh.length)} 小時` : '記錄睡眠時數可看平均'}</div></div>
+    <div class="rt" style="--tc:#C2557A"><div class="k">性慾感受</div><div class="v">${lib(true)}<small>易孕期</small></div><div class="s">其他時間平均 ${lib(false)}（0 低–3 很高）</div></div></div>
+    <div class="sec"><h2>每日紀錄</h2></div><section class="card">${recentLogs(30)}</section>`;
+};
+function cycleBars() {
+  const cs = A.cycles.filter(c => c.length).slice(-8), mx = Math.max(...cs.map(c => c.length), 35);
+  return `<div class="stat-bars">${cs.map(c => `<div class="sb"><span>${md(c.s)}</span><span class="bar"><i style="width:${c.length / mx * 100}%"></i></span><span>${c.length}天</span></div>`).join('')}</div>
+    <p class="note">平均 ${r1(A.avgCycle)} 天，標準差 ${A.cycleSd} 天。${A.irregular ? '近幾次相差超過 9 天，若持續不規律建議諮詢婦產科。' : '週期穩定，預測可信度高。'}</p>`;
+}
+
+/* ---------- 健康 ---------- */
+VIEWS.health = () => {
+  const hs = S.health.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const latest = k => { const r = hs.find(h => h[k] != null && h[k] !== ''); return r ? r[k] : null; };
+  const w7 = hs.filter(h => diff(today(), h.date) < 7);
+  const sumK = k => w7.reduce((s, h) => s + (+h[k] || 0), 0);
+  return `<div class="sec"><h2>用藥提醒</h2>${isOwner() ? '<button class="btn small ghost" data-act="add-med">＋ 新增</button>' : ''}</div>
+    <section class="card">${S.meds.length ? `<div class="list">${S.meds.map(m => `<div class="li${isOwner() ? ' click' : ''}" ${isOwner() ? `data-act="edit-med" data-id="${m.id}"` : ''}><span class="ic" style="--c:${m.active === false ? 'var(--faint)' : 'var(--plum)'};--c-soft:var(--plum-soft)">${svgI('pill')}</span>
+      <div class="g"><div class="t">${esc(m.name)}${m.dose ? ` <span class="muted small">${esc(m.dose)}</span>` : ''}</div><div class="m">${(m.times || []).join('、')}${m.weekdays && m.weekdays.length ? '・週' + m.weekdays.map(w => WD[w % 7]).join('') : '・每天'}${m.end_date ? `・到 ${md(m.end_date)}` : ''}${m.active === false ? '・已停用' : ''}</div></div></div>`).join('')}</div>` : `<div class="empty">還沒有用藥提醒${isOwner() ? '（避孕藥、鐵劑、保健品都可以加）' : ''}</div>`}</section>
+    <div class="sec"><h2>今日用藥</h2></div><section class="card">${medRows(medsToday())}</section>
+    <div class="sec"><h2>健康追蹤</h2>${isOwner() ? '<button class="btn small ghost" data-act="add-health">＋ 記錄</button>' : ''}</div>
+    <div class="rhythm">
+      <div class="rt" style="--tc:var(--plum)"><div class="k">體重</div><div class="v">${latest('weight') ?? '—'}<small>${latest('weight') ? 'kg' : ''}</small></div><div class="s">最新一筆</div></div>
+      <div class="rt" style="--tc:#5C8FB0"><div class="k">近 7 天喝水</div><div class="v">${w7.length ? Math.round(sumK('water_ml') / Math.max(1, w7.length)) : '—'}<small>${w7.length ? 'ml/天' : ''}</small></div><div class="s">${w7.length} 天有紀錄</div></div>
+      <div class="rt" style="--tc:var(--luteal)"><div class="k">近 7 天運動</div><div class="v">${sumK('exercise_min') || '—'}<small>${sumK('exercise_min') ? '分鐘' : ''}</small></div><div class="s">步數 ${sumK('steps') ? sumK('steps').toLocaleString() : '—'}</div></div>
+      <div class="rt" style="--tc:var(--period)"><div class="k">血壓／心率</div><div class="v" style="font-size:24px">${latest('bp_sys') ? `${latest('bp_sys')}/${latest('bp_dia') ?? '—'}` : '—'}</div><div class="s">靜止心率 ${latest('resting_hr') ?? '—'}</div></div>
+    </div>
+    <section class="card" style="margin-top:12px">${hs.length ? `<div class="list">${hs.slice(0, 12).map(h => `<div class="li${isOwner() ? ' click' : ''}" ${isOwner() ? `data-act="edit-health" data-id="${h.id}"` : ''}><span class="ic" style="--c:var(--luteal);--c-soft:var(--luteal-soft)">${svgI('pulse')}</span>
+      <div class="g"><div class="t">${mdw(h.date)}</div><div class="m">${[h.weight ? `${h.weight} kg` : '', h.water_ml ? `水 ${h.water_ml} ml` : '', h.exercise_min ? `運動 ${h.exercise_min} 分` : '', h.steps ? `${(+h.steps).toLocaleString()} 步` : '', h.bp_sys ? `血壓 ${h.bp_sys}/${h.bp_dia || ''}` : '', h.checkup ? esc(h.checkup) : ''].filter(Boolean).join('・') || esc(h.note || '')}</div></div></div>`).join('')}</div>` : '<div class="empty">還沒有健康紀錄</div>'}</section>
+    ${isOwner() ? contraBlock() : ''}`;
+};
+function contraBlock() {
+  const c = S.contra, m = c && CONTRA.find(x => x[0] === c.method);
+  return `<div class="sec"><h2>避孕資訊</h2><span class="r"><span class="badge">只有妳看得到</span></span></div>
+    <section class="card"><div class="li click" data-act="edit-contra" style="border:0;padding-top:0"><span class="ic" style="--c:var(--ovu);--c-soft:var(--fertile-soft)">${svgI('shield')}</span>
+      <div class="g"><div class="t">${m && m[0] ? esc(m[1]) : '尚未設定避孕方式'}</div><div class="m">${c && c.start_date ? `${md(c.start_date)} 開始` : '點這裡設定'}${c && c.next_date ? `・下次回診／更換 ${md(c.next_date)}` : ''}</div></div>${svgI('chevR')}</div>
+      ${contraInfo(c && c.method)}</section>`;
+}
+function contraInfo(method) {
+  const EFF = { implant: '0.1%', iud: '0.1–0.8%', injection: '4%', pill: '7%', ring: '7%', patch: '7%', condom: '13%', natural: '2–23%' };
+  const TIP = {
+    pill: '每天固定時間吃，可以在「用藥提醒」設成避孕藥。漏吃超過 24 小時、嘔吐或腹瀉時，避孕效果可能下降，請看藥袋說明或詢問醫師藥師。',
+    condom: '全程使用、留意保存期限與尺寸；是唯一同時能降低性傳染病風險的方式。',
+    iud: '放置後依類型可維持 3–10 年，記得設定回診日期。',
+    implant: '可維持約 3 年，到期前記得回診更換。', injection: '約每 3 個月施打一次，把下次日期設在上方。',
+    ring: '依產品週期放置與取出。', patch: '每週更換一次，依產品說明使用。',
+    natural: '依體溫、分泌物與週期判斷易孕期，需要嚴格每天記錄；月汐的預測僅供參考，不建議單獨作為避孕方法。',
+  };
+  return `${method && EFF[method] ? `<div class="info-card"><h4>一般使用下一年懷孕機率約 ${EFF[method]}</h4>${TIP[method] || ''}</div>` : ''}
+    <div class="info-card"><h4>緊急避孕</h4>沒有防護或避孕失敗時，越早處理越好：常見的緊急避孕藥建議 72 小時內服用，部分可到 120 小時。請盡快詢問醫師或藥師。</div>
+    <p class="note">數字為一般使用情況下的參考值（美國 CDC 整理），實際請依醫師建議。</p>`;
+}
+
+/* ---------- 我的／設定 ---------- */
+VIEWS.me = () => {
+  const who = S.user ? esc(S.user.email) : '本機模式';
+  const shareBlock = !CLOUD ? `<div class="warnbox">伴侶連動與行事曆提醒需要雲端同步。照 README 設定 Supabase 後即可使用。</div>` :
+    isOwner() ? `${S.partners.length ? `<div class="list">${S.partners.map(p => `<div class="li"><span class="ic">${svgI('heart')}</span><div class="g"><div class="t">${esc(p.partner_name || '伴侶')}</div><div class="m">${md(p.created_at)} 連動</div></div><button class="btn small danger" data-act="unlink" data-pid="${p.partner_id}">解除</button></div>`).join('')}</div>` : '<p class="note" style="margin-top:0">產生邀請碼給他，他在自己的手機註冊月汐後輸入，就能看到妳分享的內容。</p>'}
+      <button class="btn primary block" data-act="invite" style="margin-top:10px">${svgI('link')} 產生邀請碼</button>
+      <div class="info-card"><h4>他看得到</h4>經期紀錄、排卵期、節奏（平均週期、平均生理期、下次月經、預計排卵日）、親密紀錄、藥物提醒、健康追蹤。<h4 style="margin-top:8px">只有妳看得到</h4>症狀、心情、睡眠品質、體溫、性慾感受、排卵試紙與分泌物、避孕資訊、每日備註。</div>` :
+    `<div class="list"><div class="li"><span class="ic">${svgI('heart')}</span><div class="g"><div class="t">已連動她的月汐</div><div class="m">${S.share ? md(S.share.created_at) + ' 起' : ''}</div></div><button class="btn small danger" data-act="unlink" data-oid="${S.share && S.share.owner_id}">解除</button></div></div>`;
+  return `<section class="card"><div class="li" style="border:0;padding:0"><span class="ic">${svgI('user')}</span><div class="g"><div class="t">${who}</div><div class="m">${CLOUD ? (isOwner() ? '記錄者' : '伴侶（唯讀）') : '資料只存在這台裝置'}</div></div>${CLOUD && S.user ? '<button class="btn small ghost" data-act="logout">登出</button>' : ''}</div></section>
+    <div class="sec"><h2>伴侶連動</h2></div><section class="card">${shareBlock}</section>
+    <div class="sec"><h2>行事曆提醒</h2></div><section class="card">${CLOUD ? calBlock() : '<div class="empty">需要雲端同步</div>'}</section>
+    ${isOwner() ? `<div class="sec"><h2>資料</h2></div><section class="card"><div class="row-btns"><button class="btn ghost" data-act="export">匯出備份</button>${CLOUD ? '' : '<button class="btn ghost" data-act="demo">載入範例</button>'}</div><p class="note">月汐的預測與排卵判斷僅供參考，不能取代醫療建議，也不建議單獨作為避孕方法。</p></section>` : ''}
+    <p class="note" style="text-align:center;margin-top:20px">月汐 Lunaria ${APP_VERSION}</p>`;
+};
+function calBlock() {
+  if (!S.calToken) return `<p class="note" style="margin-top:0">產生專屬行事曆網址，用 Google 日曆或 iPhone 行事曆訂閱：預測經期、易孕期、排卵日和用藥時間會自動出現並提醒。</p><button class="btn primary block" data-act="cal-token">產生行事曆網址</button>`;
+  const url = `${CFG.supabaseUrl.replace(/\/rest\/v1\/?$/, '')}/functions/v1/cal?token=${S.calToken}`;
+  return `<div class="url">${esc(url)}</div><div class="row-btns" style="margin-top:10px"><button class="btn ghost" data-act="copy" data-v="${esc(url)}">${svgI('copy')} 複製網址</button><button class="btn ghost" data-act="cal-token" data-renew="1">換一組</button></div>
+    <div class="info-card"><h4>Android（Google 日曆）</h4>用電腦打開 calendar.google.com → 左邊「其他日曆」旁的＋ →「透過網址新增」→ 貼上網址。手機上的 Google 日曆會自動同步，可以在該日曆的設定開啟通知。</div>
+    <div class="info-card"><h4>iPhone</h4>設定 → 行事曆 → 帳號 → 加入帳號 → 其他 →「加入已訂閱的行事曆」→ 貼上網址。</div>
+    <p class="note">這個網址等於鑰匙，不要公開分享；外流時按「換一組」，舊網址就會失效。行事曆通常幾小時更新一次。</p>`;
+}
+
+/* ---------- 表單 ---------- */
+function daySheet(dateStr) {
+  const l = S.logs.find(x => String(x.date).slice(0, 10) === dateStr) || {};
+  const d = toD(dateStr);
+  const intimOn = S.intimacy.some(x => ymd(new Date(x.at)) === dateStr);
+  const flowBtns = FLOW.map(([v, t]) => `<button type="button" data-v="${v}" class="${+(l.flow || 0) === v ? 'on' : ''}"><span class="drops">${'<i></i>'.repeat(v)}</span>${t}</button>`).join('');
+  sheet(`${mdw(d)} 的紀錄`, `
+    <div class="fs"><div class="lab">經期 <span class="shr">伴侶看得到</span></div><div class="flow" data-pick="flow">${flowBtns}</div></div>
+    <div class="fs"><div class="lab">症狀 <span class="priv">只有妳</span></div>${chips('symptoms', SYMPTOMS, l.symptoms, { multi: true })}</div>
+    <div class="fs"><div class="lab">心情 <span class="priv">只有妳</span></div>${chips('moods', MOODS, l.moods, { multi: true })}</div>
+    <div class="fs"><div class="lab">基礎體溫 <span class="priv">只有妳</span></div>
+      <div class="temp-in"><button type="button" data-t="-0.05" aria-label="減少">−</button><input name="bbt" type="number" step="0.01" min="34" max="39" inputmode="decimal" placeholder="36.50" value="${l.bbt != null && l.bbt !== '' ? (+l.bbt).toFixed(2) : ''}"><button type="button" data-t="0.05" aria-label="增加">＋</button></div>
+      <p class="note">起床後、下床前量，每天同一時間，精準到小數點後兩位。</p></div>
+    <div class="fs"><div class="lab">排卵試紙 <span class="priv">只有妳</span></div>${chips('lh', LH, l.lh || '', { cls: 'f' })}
+      <div class="lab" style="margin-top:14px">分泌物</div>${chips('mucus', MUCUS, l.mucus || '', { cls: 'f' })}</div>
+    <div class="fs"><div class="lab">睡眠品質 <span class="priv">只有妳</span></div><div class="stars" data-pick="sleep_q">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-v="${n}" class="${(l.sleep_q || 0) >= n ? 'on' : ''}" aria-label="${n} 顆星">★</button>`).join('')}</div>
+      <label class="f">睡了幾小時<input name="sleep_h" type="number" step="0.5" min="0" max="16" inputmode="decimal" value="${l.sleep_h ?? ''}" placeholder="7.5"></label></div>
+    <div class="fs"><div class="lab">性慾感受 <span class="priv">只有妳</span></div>${chips('libido', LIBIDO, l.libido ?? '')}</div>
+    <div class="fs"><div class="lab">親密 <span class="shr">伴侶看得到</span></div>${intimOn ? '<p class="note" style="margin:0">這天已有親密紀錄，可到「紀錄 → 親密」修改。</p>' : `${chips('intim', [['', '沒有'], ['1', '有']], '')}<div style="margin-top:10px">${chips('protection', PROTECT, 'condom')}</div>`}</div>
+    <div class="fs"><div class="lab">備註 <span class="priv">只有妳</span></div><textarea name="note" placeholder="例：熬夜、壓力大、運動">${esc(l.note || '')}</textarea></div>`,
+    {
+      onSave: async f => {
+        const bbt = f.bbt.value ? +(+f.bbt.value).toFixed(2) : null;
+        const row = { date: dateStr, flow: +(pick1(f, 'flow') || 0), symptoms: picked(f, 'symptoms'), moods: picked(f, 'moods'), bbt, lh: pick1(f, 'lh') || null, mucus: pick1(f, 'mucus') || null,
+          sleep_q: +(f.querySelectorAll('[data-pick="sleep_q"] button.on').length) || null, sleep_h: f.sleep_h.value ? +f.sleep_h.value : null, libido: pick1(f, 'libido') === '' ? null : +pick1(f, 'libido'), note: f.note.value.trim() || null, updated_at: new Date().toISOString() };
+        if (CLOUD) row.user_id = S.ownerId;
+        await DB.upsert('day_logs', row);
+        if (row.flow > 0) await autoCycle(dateStr);
+        if (!intimOn && pick1(f, 'intim') === '1') await DB.insert('intimacy', { user_id: S.ownerId, at: new Date(`${dateStr}T22:00:00`).toISOString(), protection: pick1(f, 'protection') || null });
+        await refresh(); toast('已儲存');
+      },
+      onDelete: l.date ? async () => { await DB.remove('day_logs', CLOUD ? { user_id: S.ownerId, date: dateStr } : { date: dateStr }); await refresh(); } : null,
+    });
+  const f = $('#sheet form');
+  // 星星：點第 n 顆就亮到第 n 顆
+  f.querySelector('[data-pick="sleep_q"]').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const n = +b.dataset.v; setTimeout(() => f.querySelectorAll('[data-pick="sleep_q"] button').forEach(x => x.classList.toggle('on', +x.dataset.v <= n))); });
+  f.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { const v = +(f.bbt.value || 36.5) + +b.dataset.t; f.bbt.value = v.toFixed(2); });
+  f.querySelector('[data-pick="flow"]').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; f.querySelectorAll('[data-pick="flow"] button').forEach(x => x.classList.toggle('on', x === b)); });
+}
+/* 記了經量 → 自動延長或建立週期 */
+async function autoCycle(dateStr) {
+  const d = toD(dateStr);
+  const near = S.cycles.map(c => ({ c, s: toD(c.start_date) })).filter(x => diff(d, x.s) >= -2 && diff(d, x.s) <= 12).sort((a, b) => b.s - a.s)[0];
+  if (near) {
+    if (diff(d, near.s) < 0) { await DB.update('cycles', near.c.id, { start_date: dateStr }); return; }
+    if (!near.c.end_date || toD(near.c.end_date) < d) await DB.update('cycles', near.c.id, { end_date: dateStr });
+    return;
+  }
+  const recent = S.cycles.some(c => Math.abs(diff(d, c.start_date)) < 15);
+  if (!recent) { await DB.insert('cycles', CLOUD ? { user_id: S.ownerId, start_date: dateStr } : { start_date: dateStr }); toast(`已建立新週期：${md(d)} 開始`); }
+}
+function periodStartSheet() {
+  sheet('月經來了', `<div class="fs"><label class="f" style="margin:0">第一天是哪天<input type="date" name="d" value="${ymd(today())}" max="${ymd(today())}"></label>
+    <p class="note">之後每天在「記錄」裡標經量，月汐會自動算出結束日。</p></div>`, {
+    saveLabel: '記錄', onSave: async f => {
+      const d = f.d.value; if (!d) return false;
+      const dup = S.cycles.find(c => Math.abs(diff(d, c.start_date)) < 10);
+      if (dup) await DB.update('cycles', dup.id, { start_date: d });
+      else await DB.insert('cycles', CLOUD ? { user_id: S.ownerId, start_date: d } : { start_date: d });
+      const l = S.logs.find(x => String(x.date).slice(0, 10) === d);
+      if (!l || !l.flow) await DB.upsert('day_logs', { ...(CLOUD ? { user_id: S.ownerId } : {}), date: d, flow: 3, updated_at: new Date().toISOString() });
+      await refresh(); toast('已記錄，祝妳這幾天舒服一點');
+    }
+  });
+}
+function cycleSheet(id) {
+  const c = S.cycles.find(x => x.id === id); if (!c) return;
+  sheet('編輯經期', `<div class="fs"><div class="two"><label class="f" style="margin:0">開始<input type="date" name="s" value="${String(c.start_date).slice(0, 10)}"></label><label class="f" style="margin:0">結束<input type="date" name="e" value="${c.end_date ? String(c.end_date).slice(0, 10) : ''}"></label></div>
+    <label class="f">備註<textarea name="note">${esc(c.note || '')}</textarea></label></div>`, {
+    onSave: async f => { await DB.update('cycles', id, { start_date: f.s.value, end_date: f.e.value || null, note: f.note.value.trim() || null }); await refresh(); },
+    onDelete: async () => { await DB.remove('cycles', { id }); await refresh(); },
+  });
+}
+function intimacySheet(id) {
+  const x = id ? S.intimacy.find(i => i.id === id) : null;
+  const at = x ? new Date(x.at) : new Date();
+  const lt = new Date(at.getTime() - at.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  sheet(x ? '編輯親密紀錄' : '新增親密紀錄', `<div class="fs"><label class="f" style="margin:0">時間<input type="datetime-local" name="at" value="${lt}"></label>
+    <div class="lab" style="margin-top:14px">防護方式</div>${chips('protection', PROTECT, x ? x.protection : 'condom')}
+    <label class="f">備註<input name="note" value="${esc(x ? x.note || '' : '')}" placeholder="選填"></label></div>
+    ${!x ? '<p class="note">雙方都看得到這筆紀錄。</p>' : ''}`, {
+    onSave: async f => {
+      const row = { at: new Date(f.at.value).toISOString(), protection: pick1(f, 'protection') || null, note: f.note.value.trim() || null };
+      if (x) await DB.update('intimacy', x.id, row); else await DB.insert('intimacy', { ...row, user_id: S.ownerId });
+      const st = Cycle.dayStatus(A, new Date(f.at.value));
+      await refresh(); toast(row.protection === 'none' && (st.fertile || st.ovulation) ? '已記錄・這天在易孕期，請留意' : '已記錄');
+    },
+    onDelete: x ? async () => { await DB.remove('intimacy', { id: x.id }); await refresh(); } : null,
+  });
+}
+function medSheet(id) {
+  const m = id ? S.meds.find(x => x.id === id) : null;
+  sheet(m ? '編輯用藥' : '新增用藥提醒', `<div class="fs">
+    <label class="f" style="margin:0">名稱<input name="name" required value="${esc(m ? m.name : '')}" placeholder="例：避孕藥、鐵劑、維他命 D"></label>
+    <div class="two"><label class="f">劑量<input name="dose" value="${esc(m ? m.dose || '' : '')}" placeholder="1 顆"></label><label class="f">類型<select name="kind">${[['med', '藥物'], ['contraceptive', '避孕藥'], ['supplement', '保健品']].map(([v, l]) => `<option value="${v}" ${m && m.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+    <label class="f">提醒時間（可多個，用逗號分開）<input name="times" value="${esc(m && m.times ? m.times.join(', ') : '09:00')}" placeholder="08:00, 21:00"></label>
+    <div class="lab" style="margin-top:14px">哪幾天（不選＝每天）</div>${chips('wd', [[1, '一'], [2, '二'], [3, '三'], [4, '四'], [5, '五'], [6, '六'], [7, '日']].map(([v, l]) => [String(v), l]), (m && m.weekdays || []).map(String), { multi: true })}
+    <div class="two"><label class="f">開始<input type="date" name="s" value="${m && m.start_date ? String(m.start_date).slice(0, 10) : ymd(today())}"></label><label class="f">結束（選填）<input type="date" name="e" value="${m && m.end_date ? String(m.end_date).slice(0, 10) : ''}"></label></div>
+    <label class="f">備註<input name="note" value="${esc(m ? m.note || '' : '')}"></label>
+    ${m ? `<label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="active" ${m.active !== false ? 'checked' : ''} style="width:auto;margin:0"> 啟用中</label>` : ''}</div>
+    <p class="note">伴侶看得到藥名與時間。行事曆訂閱會在這些時間提醒。</p>`, {
+    onSave: async f => {
+      const times = f.times.value.split(/[,，、\s]+/).map(t => t.trim()).filter(t => /^\d{1,2}:\d{2}$/.test(t)).map(t => t.padStart(5, '0'));
+      const row = { name: f.name.value.trim(), dose: f.dose.value.trim() || null, kind: f.kind.value, times: times.length ? times : ['09:00'], weekdays: picked(f, 'wd').map(Number), start_date: f.s.value || null, end_date: f.e.value || null, note: f.note.value.trim() || null, active: m ? f.active.checked : true };
+      if (!row.name) return false;
+      if (m) await DB.update('meds', m.id, row); else await DB.insert('meds', CLOUD ? { ...row, user_id: S.ownerId } : row);
+      await refresh();
+    },
+    onDelete: m ? async () => { await DB.remove('meds', { id: m.id }); await refresh(); } : null,
+  });
+}
+function healthSheet(id) {
+  const h = id ? S.health.find(x => x.id === id) : {};
+  const v = k => h && h[k] != null ? h[k] : '';
+  sheet(id ? '編輯健康紀錄' : '健康紀錄', `<div class="fs"><label class="f" style="margin:0">日期<input type="date" name="date" value="${h && h.date ? String(h.date).slice(0, 10) : ymd(today())}"></label>
+    <div class="two"><label class="f">體重 kg<input name="weight" type="number" step="0.1" inputmode="decimal" value="${v('weight')}"></label><label class="f">喝水 ml<input name="water_ml" type="number" step="50" inputmode="numeric" value="${v('water_ml')}"></label></div>
+    <div class="two"><label class="f">運動分鐘<input name="exercise_min" type="number" inputmode="numeric" value="${v('exercise_min')}"></label><label class="f">步數<input name="steps" type="number" inputmode="numeric" value="${v('steps')}"></label></div>
+    <div class="two"><label class="f">收縮壓<input name="bp_sys" type="number" inputmode="numeric" value="${v('bp_sys')}"></label><label class="f">舒張壓<input name="bp_dia" type="number" inputmode="numeric" value="${v('bp_dia')}"></label></div>
+    <label class="f">靜止心率<input name="resting_hr" type="number" inputmode="numeric" value="${v('resting_hr')}"></label>
+    <label class="f">看診／檢查<input name="checkup" value="${esc(v('checkup'))}" placeholder="例：婦產科回診、抽血"></label>
+    <label class="f">備註<input name="note" value="${esc(v('note'))}"></label></div><p class="note">伴侶看得到健康追蹤。</p>`, {
+    onSave: async f => {
+      const num = k => f[k].value === '' ? null : +f[k].value;
+      const row = { date: f.date.value, weight: num('weight'), water_ml: num('water_ml'), exercise_min: num('exercise_min'), steps: num('steps'), bp_sys: num('bp_sys'), bp_dia: num('bp_dia'), resting_hr: num('resting_hr'), checkup: f.checkup.value.trim() || null, note: f.note.value.trim() || null };
+      if (id) await DB.update('health', id, row); else await DB.insert('health', CLOUD ? { ...row, user_id: S.ownerId } : row);
+      await refresh();
+    },
+    onDelete: id ? async () => { await DB.remove('health', { id }); await refresh(); } : null,
+  });
+}
+function contraSheet() {
+  const c = S.contra || {};
+  sheet('避孕資訊', `<div class="fs"><label class="f" style="margin:0">目前方式<select name="method">${CONTRA.map(([v, l]) => `<option value="${v}" ${c.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <div class="two"><label class="f">開始日<input type="date" name="s" value="${c.start_date ? String(c.start_date).slice(0, 10) : ''}"></label><label class="f">下次回診／更換<input type="date" name="n" value="${c.next_date ? String(c.next_date).slice(0, 10) : ''}"></label></div>
+    <label class="f">備註<textarea name="note" placeholder="例：品牌、醫師交代事項">${esc(c.note || '')}</textarea></label></div>
+    <p class="note">只有妳看得到。口服避孕藥建議也加到「用藥提醒」。</p>`, {
+    onSave: async f => { await DB.upsert('contraception', { ...(CLOUD ? { user_id: S.ownerId } : {}), method: f.method.value || null, start_date: f.s.value || null, next_date: f.n.value || null, note: f.note.value.trim() || null, updated_at: new Date().toISOString() }); await refresh(); },
+  });
+}
+function dayDetailPartner(dateStr) {
+  const d = toD(dateStr), st = Cycle.dayStatus(A, d);
+  const intim = S.intimacy.filter(x => ymd(new Date(x.at)) === dateStr);
+  const tags = [st.period ? '經期' : '', st.predictedPeriod ? '預測經期' : '', st.ovulation ? (st.ovPredicted ? '預計排卵日' : '排卵日') : '', st.fertile ? '易孕期' : ''].filter(Boolean);
+  sheet(mdw(d), `<div class="fs">${tags.length ? tags.map(t => `<span class="badge mid" style="margin-right:6px">${t}</span>`).join('') : '<span class="muted">一般日子</span>'}</div>
+    <div class="fs"><div class="lab">親密紀錄</div>${intim.length ? `<div class="list">${intim.map(intimacyRow).join('')}</div>` : '<div class="empty">沒有紀錄</div>'}</div>
+    <div class="fs"><div class="lab">這天的用藥</div>${medRows(medsToday(d), d)}</div>`, {});
+}
+
+/* ---------- 伴侶連動 ---------- */
+async function makeInvite() {
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), b => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
+  const { error } = await sb.from('invites').insert({ code }); if (error) throw error;
+  sheet('邀請碼', `<div class="fs"><div class="code">${code}</div><p class="note">把這組碼傳給他。他打開月汐 → 註冊 → 選「我是伴侶」→ 輸入邀請碼。<br>48 小時內有效，只能用一次。</p></div>
+    <div class="fs"><div class="lab">月汐網址</div><div class="url">${esc(location.href.split('#')[0])}</div></div>`, {});
+}
+async function redeem(code, name) {
+  const { data, error } = await sb.rpc('redeem_invite', { p_code: code, p_name: name || null });
+  if (error) throw new Error(error.message.includes('邀請碼') ? '邀請碼無效或已過期' : error.message);
+  return data;
+}
+async function makeCalToken(renew) {
+  const tok = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+  const { error } = await sb.from('cal_tokens').upsert({ user_id: S.user.id, token: tok }, { onConflict: 'user_id' }); if (error) throw error;
+  S.calToken = tok; render(); toast(renew ? '已換新網址，舊的失效了' : '已產生');
+}
+
+/* ---------- 導覽與畫面 ---------- */
+const NAV_OWNER = [['today', '今天', 'home'], ['cal', '月曆', 'cal'], ['records', '紀錄', 'list'], ['health', '健康', 'leaf'], ['me', '我的', 'user']];
+const NAV_PARTNER = [['today', '她的今天', 'home'], ['cal', '月曆', 'cal'], ['records', '紀錄', 'heart'], ['health', '健康', 'leaf'], ['me', '設定', 'user']];
+let render = function () {
+  const nav = isOwner() ? NAV_OWNER : NAV_PARTNER;
+  if (!nav.some(n => n[0] === S.tab) && S.tab !== 'remind') S.tab = 'today';
+  $('#nav').innerHTML = nav.map(([k, l, ic]) => `<button data-act="tab" data-tab="${k}" class="${S.tab === k ? 'on' : ''}" aria-current="${S.tab === k ? 'page' : 'false'}">${svgI(ic)}${l}</button>`).join('');
+  $('#view').innerHTML = VIEWS[S.tab]();
+  $('#view').classList.toggle('mask', S.mask);
+  $('#hideBtn').innerHTML = svgI(S.mask ? 'eyeOff' : 'eye');
+  const rp = $('#rolePill'); rp.hidden = isOwner(); rp.textContent = '伴侶模式';
+}
+async function refresh() { try { await loadAll(); } catch (e) { toast('讀取失敗：' + e.message); } render(); }
+
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act;
+  try {
+    switch (a) {
+      case 'tab': S.tab = el.dataset.tab; render(); scrollTo(0, 0); break;
+      case 'hide': S.mask = !S.mask; try { localStorage.setItem('lun_mask', S.mask ? '1' : '0'); } catch (_) { } render(); break;
+      case 'log': closeSheet(); daySheet(el.dataset.date); break;
+      case 'day': isOwner() ? daySheet(el.dataset.date) : dayDetailPartner(el.dataset.date); break;
+      case 'month': { const m = S.month || new Date(today().getFullYear(), today().getMonth(), 1); const d = +el.dataset.d; S.month = d === 0 ? null : new Date(m.getFullYear(), m.getMonth() + d, 1); render(); break; }
+      case 'period-start': periodStartSheet(); break;
+      case 'period-end': { const c = S.cycles.slice().sort((x, y) => String(y.start_date).localeCompare(String(x.start_date)))[0]; if (c) { await DB.update('cycles', c.id, { end_date: ymd(today()) }); await refresh(); toast(`經期 ${diff(today(), c.start_date) + 1} 天，已記錄`); } break; }
+      case 'edit-cycle': cycleSheet(el.dataset.id); break;
+      case 'add-intimacy': intimacySheet(); break;
+      case 'edit-intimacy': closeSheet(); intimacySheet(el.dataset.id); break;
+      case 'add-med': medSheet(); break;
+      case 'edit-med': medSheet(el.dataset.id); break;
+      case 'add-health': healthSheet(); break;
+      case 'edit-health': healthSheet(el.dataset.id); break;
+      case 'edit-contra': contraSheet(); break;
+      case 'rec-tab': S.recTab = el.dataset.k; render(); break;
+      case 'med-tick': {
+        const m = { med_id: el.dataset.id, date: el.dataset.date, slot: el.dataset.slot };
+        const done = S.medLogs.some(l => l.med_id === m.med_id && String(l.date).slice(0, 10) === m.date && l.slot === m.slot);
+        if (done) await DB.remove('med_logs', m); else await DB.insert('med_logs', CLOUD ? { ...m, user_id: S.ownerId } : m);
+        await refresh(); break;
+      }
+      case 'invite': await makeInvite(); break;
+      case 'unlink': if (!confirm('確定要解除連動嗎？對方將看不到任何資料。')) break;
+        if (el.dataset.pid) await sb.from('shares').delete().eq('owner_id', S.user.id).eq('partner_id', el.dataset.pid);
+        else await sb.from('shares').delete().eq('owner_id', el.dataset.oid).eq('partner_id', S.user.id);
+        await boot(); toast('已解除連動'); break;
+      case 'cal-token': await makeCalToken(!!el.dataset.renew); break;
+      case 'copy': await navigator.clipboard.writeText(el.dataset.v); toast('已複製'); break;
+      case 'export': { const blob = new Blob([JSON.stringify({ app: 'lunaria', version: APP_VERSION, exported: new Date().toISOString(), cycles: S.cycles, day_logs: S.logs, intimacy: S.intimacy, meds: S.meds, med_logs: S.medLogs, health: S.health, contraception: S.contra }, null, 2)], { type: 'application/json' }); const u = URL.createObjectURL(blob); const x = document.createElement('a'); x.href = u; x.download = `lunaria-${ymd(today())}.json`; x.click(); URL.revokeObjectURL(u); break; }
+      case 'demo': await loadDemo(); break;
+      case 'logout': await sb.auth.signOut(); location.reload(); break;
+    }
+  } catch (err) { toast('出錯了：' + (err.message || err)); }
+});
+
+/* ---------- 範例資料（本機模式試用） ---------- */
+async function loadDemo() {
+  const t = today(), starts = [-118, -89, -59, -31, -2].map(n => add(t, n));
+  for (const s of starts) await DB.insert('cycles', { start_date: ymd(s), end_date: ymd(add(s, 4)) });
+  const cur = starts[starts.length - 1], prev = starts[starts.length - 2];
+  for (let i = 0; i < 29; i++) { const d = add(prev, i); await DB.upsert('day_logs', { date: ymd(d), bbt: +(i < 16 ? 36.3 + (i % 4) * .04 : 36.72 + (i % 2) * .04).toFixed(2), flow: i < 5 ? [3, 4, 3, 2, 1][i] : 0, lh: i === 14 ? 'peak' : null, mucus: i === 13 ? 'eggwhite' : null, symptoms: i < 2 ? ['經痛', '腰痠'] : i > 24 ? ['腹脹', '痘痘'] : [], moods: i > 24 ? ['敏感'] : ['平靜'], sleep_q: 3 + (i % 3 === 0 ? 1 : 0), sleep_h: 7, libido: i > 10 && i < 16 ? 3 : 1 }); }
+  for (let i = 0; i < 3; i++) await DB.upsert('day_logs', { date: ymd(add(cur, i)), flow: [3, 4, 3][i], bbt: +(36.35 + i * .03).toFixed(2), symptoms: ['經痛'], moods: ['想被抱抱'], sleep_q: 3 });
+  await DB.insert('meds', { name: '鐵劑', dose: '1 顆', kind: 'supplement', times: ['09:00'], weekdays: [], start_date: ymd(add(t, -30)), active: true });
+  await DB.insert('health', { date: ymd(t), weight: 52.4, water_ml: 1800, exercise_min: 30, steps: 7200 });
+  await DB.insert('intimacy', { at: add(prev, 12).toISOString(), protection: 'condom' });
+  await refresh(); toast('已載入範例資料');
+}
+
+/* ---------- 啟動 ---------- */
+let boot = async function () {
+  if (!CLOUD) { S.role = 'owner'; S.ownerId = 'local'; $('#app').hidden = false; await refresh(); return; }
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { $('#auth').hidden = false; $('#app').hidden = true; return; }
+  S.user = session.user; $('#auth').hidden = true;
+  const { data: sh } = await sb.from('shares').select('*');
+  const asPartner = (sh || []).find(x => x.partner_id === S.user.id);
+  S.partners = (sh || []).filter(x => x.owner_id === S.user.id);
+  const { data: tok } = await sb.from('cal_tokens').select('token').eq('user_id', S.user.id).maybeSingle();
+  S.calToken = tok ? tok.token : null;
+  const pref = localStorage.getItem('lun_role_' + S.user.id);
+  if (asPartner) { S.role = 'partner'; S.share = asPartner; S.ownerId = asPartner.owner_id; }
+  else if (pref === 'owner') { S.role = 'owner'; S.ownerId = S.user.id; }
+  else {
+    const { count } = await sb.from('cycles').select('id', { count: 'exact', head: true }).eq('user_id', S.user.id);
+    if (count > 0) { S.role = 'owner'; S.ownerId = S.user.id; localStorage.setItem('lun_role_' + S.user.id, 'owner'); }
+    else { $('#app').hidden = false; return chooseRole(); }
+  }
+  $('#app').hidden = false; await refresh();
+}
+function chooseRole() {
+  $('#view').innerHTML = `<section class="card hero"><div class="logo big" style="margin:10px 0 6px">${$('.logo svg').outerHTML}<span>月汐<small>LUNARIA</small></span></div>
+    <p class="hero-sub">第一次使用，妳是哪一位？</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px"><button class="btn period block" id="asOwner">我要記錄自己的週期</button><button class="btn ghost block" id="asPartner">我是伴侶，輸入邀請碼</button></div></section>`;
+  $('#nav').innerHTML = '';
+  $('#asOwner').onclick = async () => { localStorage.setItem('lun_role_' + S.user.id, 'owner'); S.role = 'owner'; S.ownerId = S.user.id; await refresh(); };
+  $('#asPartner').onclick = () => sheet('輸入邀請碼', `<div class="fs"><label class="f" style="margin:0">邀請碼<input name="code" required autocomplete="off" style="text-transform:uppercase;letter-spacing:.3em;font-size:22px;text-align:center" maxlength="6"></label><label class="f">妳／你的稱呼（她會看到）<input name="name" placeholder="例：Alex"></label></div>`, {
+    saveLabel: '連動', onSave: async f => { await redeem(f.code.value, f.name.value.trim()); toast('連動成功'); await boot(); },
+  });
+}
+$('#authForm')?.addEventListener('submit', async e => {
+  e.preventDefault(); const f = e.target; $('#authErr').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({ email: f.email.value, password: f.password.value });
+  if (error) $('#authErr').textContent = error.message.includes('Invalid') ? 'Email 或密碼不正確' : error.message; else boot();
+});
+$('#signupBtn')?.addEventListener('click', async () => {
+  const f = $('#authForm'); if (!f.email.value || f.password.value.length < 6) { $('#authErr').textContent = '請填 Email 和至少 6 碼的密碼'; return; }
+  const { error } = await sb.auth.signUp({ email: f.email.value, password: f.password.value });
+  $('#authErr').textContent = error ? error.message : '註冊成功！如果 Supabase 有開信箱驗證，請先到信箱點連結再登入。';
+  if (!error) boot();
+});
+
+/* ================================================================
+ * v1.1：提醒頁、健康小圖表、我的（設定清單）、主題、密碼鎖
+ * ================================================================ */
+/* ---------- 今日提醒 ---------- */
+function todayReminders() {
+  const out = [], c = A.current, t = today();
+  if (!c) return out;
+  const last = A.cycles[A.cycles.length - 1];
+  if (SET.rm.tips && (c.inPeriod || (last && !last.e && c.cycleDay <= 8))) out.push({ ic: 'moon', c: 'var(--period)', cs: 'var(--period-soft)', t: `經期第 ${c.cycleDay} 天`, m: c.cycleDay <= 2 ? '多喝溫水、注意保暖，經痛可以熱敷下腹' : '記得補充水分與鐵質，適度休息' });
+  const od = diff(c.ovulation, t);
+  if (SET.rm.ovu && od >= -1 && od <= 6) out.push({ ic: 'spark', c: 'var(--ovu)', cs: 'var(--fertile-soft)', t: od > 0 ? '接近排卵期' : od === 0 ? '今天是排卵日' : '剛過排卵日', m: `${od > 0 ? '預計' : ''}${md(c.ovulation)}${c.ovMethod === 'predicted' ? ` 左右（±${c.ovRange} 天）` : `（${OV_L[c.ovMethod]}）`}・易孕 ${md(c.fertileStart)}–${md(c.fertileEnd)}` });
+  const nd = diff(c.nextStart, t);
+  if (SET.rm.period && nd >= -3 && nd <= 7) out.push({ ic: 'cal', c: 'var(--period)', cs: 'var(--period-soft)', t: nd > 0 ? '下次月經提醒' : nd === 0 ? '月經預計今天來' : `月經晚了 ${-nd} 天`, m: nd > 0 ? `預計 ${mdw(c.nextStart)}（${nd} 天後），可以先準備用品` : '來了記得點「月經來了」' });
+  if (SET.rm.tips && !c.inPeriod && phaseOf() && phaseOf().k === 'luteal' && nd > 0 && nd <= 5) out.push({ ic: 'leaf', c: 'var(--luteal)', cs: 'var(--luteal-soft)', t: '經前期', m: '可能比較容易累或情緒起伏，早點休息、減少咖啡因' });
+  if (isOwner() && S.contra && S.contra.next_date) { const k = diff(S.contra.next_date, t); if (k >= 0 && k <= 7) out.push({ ic: 'shield', c: 'var(--plum)', cs: 'var(--plum-soft)', t: '避孕回診／更換', m: `${mdw(S.contra.next_date)}（${k === 0 ? '今天' : k + ' 天後'}）` }); }
   return out;
 }
-async function scanBtc(addr) {
-  const j = await (await fetch('https://mempool.space/api/address/' + encodeURIComponent(addr))).json();
-  const sats = (j.chain_stats.funded_txo_sum - j.chain_stats.spent_txo_sum) + (j.mempool_stats.funded_txo_sum - j.mempool_stats.spent_txo_sum);
-  return [{ symbol: 'BTC', cg: 'bitcoin', qty: sats / 1e8, chain: 'Bitcoin' }];
+VIEWS.remind = () => {
+  const rms = todayReminders(), meds = medsToday();
+  return `<div class="page-h"><h2>用藥提醒</h2>${isOwner() ? '<button class="btn small ghost" data-act="add-med">＋ 新增</button>' : ''}</div>
+    <section class="card">${S.meds.length ? medRows(meds) + (S.meds.some(m => m.active === false) ? '' : '') : `<div class="empty">還沒有用藥提醒${isOwner() ? '（避孕藥、鐵劑、保健品都可以加）' : ''}</div>`}
+      ${S.meds.length && isOwner() ? `<button class="btn small ghost" data-act="tab" data-tab="health" style="margin-top:10px">管理全部藥物</button>` : ''}</section>
+    <div class="sec"><h2>今日提醒</h2><span class="r">${rms.length ? rms.length + ' 則' : ''}</span></div>
+    ${rms.length ? rms.map(r => `<div class="rm"><span class="ic" style="--c:${r.c};--c-soft:${r.cs}">${svgI(r.ic)}</span><div><div class="t">${esc(r.t)}</div><div class="m">${esc(r.m)}</div></div></div>`).join('') : '<section class="card"><div class="empty">今天沒有特別的提醒</div></section>'}
+    ${CLOUD ? `<p class="note" style="margin:14px 4px">想在手機收到通知：到「我的 → 行事曆提醒」訂閱，Google 日曆／iPhone 行事曆會依時間跳出提醒。</p>` : ''}`;
+};
+
+/* ---------- 健康：小圖表 ---------- */
+function sparkLine(vals) {
+  const v = vals.filter(x => x != null); if (v.length < 2) return '';
+  const lo = Math.min(...v), hi = Math.max(...v), sp = hi - lo || 1, n = vals.length;
+  const pts = vals.map((x, i) => x == null ? null : [i / (n - 1) * 100, 36 - (x - lo) / sp * 28]).filter(Boolean);
+  return `<svg class="sp" viewBox="0 0 100 40" preserveAspectRatio="none"><path d="${pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ')}"/>${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="1.6"/>`).join('')}</svg>`;
 }
-async function loadWallets(force) {
-  const saved = cacheGet('wallets', force ? 0 : 10 * 60e3) || {};
-  await Promise.all(S.wallets.map(async w => {
-    if (saved[w.id] && !force) { S.walletBal[w.id] = saved[w.id]; return; }
+function sparkBars(vals, goal) {
+  const mx = Math.max(goal || 0, ...vals.map(x => x || 0)) || 1, n = vals.length, w = 100 / n;
+  return `<svg class="sp" viewBox="0 0 100 40" preserveAspectRatio="none">${vals.map((x, i) => { const h = Math.max(2, (x || 0) / mx * 38); return `<rect x="${(i * w + w * .22).toFixed(1)}" y="${(40 - h).toFixed(1)}" width="${(w * .56).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" class="${goal && (x || 0) < goal ? 'lo' : ''}"/>`; }).join('')}</svg>`;
+}
+VIEWS.health = () => {
+  const hs = S.health.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const t = today(), days = Array.from({ length: 7 }, (_, i) => ymd(add(t, i - 6)));
+  const byDay = k => days.map(d => { const r = hs.filter(h => String(h.date).slice(0, 10) === d && h[k] != null && h[k] !== ''); return r.length ? r.reduce((s, h) => s + +h[k], 0) : null; });
+  const wts = hs.filter(h => h.weight != null && h.weight !== '').slice(-10);
+  const wNow = wts.length ? +wts[wts.length - 1].weight : null;
+  const wWeek = wts.filter(h => diff(t, h.date) >= 7).pop();
+  const water = byDay('water_ml'), ex = byDay('exercise_min'), steps = byDay('steps');
+  const waterToday = water[6] ?? [...water].reverse().find(x => x != null);
+  const bps = hs.filter(h => h.bp_sys).slice(-10), bp = bps[bps.length - 1];
+  const exSum = ex.reduce((s, x) => s + (x || 0), 0), stSum = steps.reduce((s, x) => s + (x || 0), 0);
+  const range = `${md(days[0])} – ${md(days[6])}`;
+  const cyc = A.cycles.filter(c => c.length).slice(-4).reverse(), mx = Math.max(35, ...cyc.map(c => c.length));
+  return `<div class="page-h"><h2>健康追蹤</h2><span class="badge">${range}</span></div>
+    <div class="hgrid">
+      <div class="hc" style="--tc:var(--plum)" ${isOwner() ? 'data-act="add-health"' : ''}><div class="k">體重</div><div class="v">${wNow ?? '—'}<small>${wNow ? 'kg' : ''}</small></div><div class="s">${wNow && wWeek ? `較一週前 ${(wNow - wWeek.weight >= 0 ? '+' : '')}${(wNow - wWeek.weight).toFixed(1)} kg` : '點一下記錄'}</div>${sparkLine(wts.map(h => +h.weight))}</div>
+      <div class="hc" style="--tc:var(--fertile)" ${isOwner() ? 'data-act="add-health"' : ''}><div class="k">水分</div><div class="v">${waterToday ?? '—'}<small>${waterToday ? 'ml' : ''}</small></div><div class="s">${waterToday ? `達成 ${Math.round(waterToday / SET.waterGoal * 100)}%・目標 ${SET.waterGoal}` : `每日目標 ${SET.waterGoal} ml`}</div>${sparkBars(water, SET.waterGoal)}</div>
+      <div class="hc" style="--tc:var(--luteal)" ${isOwner() ? 'data-act="add-health"' : ''}><div class="k">運動</div><div class="v">${exSum || '—'}<small>${exSum ? '分鐘' : ''}</small></div><div class="s">近 7 天・步數 ${stSum ? stSum.toLocaleString() : '—'}</div>${sparkBars(ex, SET.exGoal)}</div>
+      <div class="hc" style="--tc:var(--period)" ${isOwner() ? 'data-act="add-health"' : ''}><div class="k">血壓／心率</div><div class="v" style="font-size:24px">${bp ? `${bp.bp_sys}/${bp.bp_dia || '—'}` : '-- / --'}</div><div class="s">${bp ? `${md(bp.date)}・心率 ${bp.resting_hr ?? '—'}` : '暫無紀錄'}</div>${sparkLine(bps.map(h => +h.bp_sys))}</div>
+    </div>
+    <div class="sec"><h2>近期週期</h2><span class="r">平均 ${r1(A.avgCycle)} 天</span></div>
+    <section class="card">${cyc.length ? `<div class="stat-bars">${cyc.map(c => `<div class="sb"><span>${md(c.s)}</span><span class="bar"><i style="width:${c.length / mx * 100}%"></i></span><span>${c.length} 天</span></div>`).join('')}</div>` : '<div class="empty">累積兩次以上月經就會出現</div>'}
+      <button class="btn ghost block" data-act="health-report" style="margin-top:12px">${svgI('pulse')} 詳細健康報告</button></section>
+    <div class="sec"><h2>用藥</h2>${isOwner() ? '<button class="btn small ghost" data-act="add-med">＋ 新增</button>' : ''}</div>
+    <section class="card">${S.meds.length ? `<div class="list">${S.meds.map(m => `<div class="li${isOwner() ? ' click' : ''}" ${isOwner() ? `data-act="edit-med" data-id="${m.id}"` : ''}><span class="ic" style="--c:${m.active === false ? 'var(--faint)' : 'var(--plum)'};--c-soft:var(--plum-soft)">${svgI('pill')}</span>
+      <div class="g"><div class="t">${esc(m.name)}${m.dose ? ` <span class="muted small">${esc(m.dose)}</span>` : ''}</div><div class="m">${(m.times || []).join('、')}${m.weekdays && m.weekdays.length ? '・週' + m.weekdays.map(w => WD[w % 7]).join('') : '・每天'}${m.active === false ? '・已停用' : ''}</div></div></div>`).join('')}</div>` : '<div class="empty">還沒有用藥</div>'}</section>
+    ${isOwner() ? contraBlock() : ''}`;
+};
+function healthReport() {
+  const hs = S.health.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const avg = k => { const v = hs.filter(h => h[k] != null && h[k] !== '' && diff(today(), h.date) < 30).map(h => +h[k]); return v.length ? r1(v.reduce((s, x) => s + x, 0) / v.length) : '—'; };
+  sheet('詳細健康報告', `<div class="fs"><div class="lab">近 30 天平均</div><div class="two">
+      <div><div class="muted small">體重</div><b>${avg('weight')} kg</b></div><div><div class="muted small">喝水</div><b>${avg('water_ml')} ml</b></div>
+      <div><div class="muted small">運動</div><b>${avg('exercise_min')} 分</b></div><div><div class="muted small">步數</div><b>${avg('steps')}</b></div>
+      <div><div class="muted small">收縮壓</div><b>${avg('bp_sys')}</b></div><div><div class="muted small">靜止心率</div><b>${avg('resting_hr')}</b></div></div></div>
+    <div class="fs"><div class="lab">週期</div><p class="note" style="margin:0">平均週期 ${r1(A.avgCycle)} 天（${A.minCycle ?? '—'}–${A.maxCycle ?? '—'}）、平均經期 ${r1(A.avgPeriod)} 天、黃體期 ${A.luteal} 天${A.lutealSamples ? '（個人數據）' : '（預設）'}。${A.irregular ? '近期週期變化較大。' : ''}</p></div>
+    <div class="fs"><div class="lab">所有紀錄</div>${hs.length ? `<div class="list">${hs.map(h => `<div class="li${isOwner() ? ' click' : ''}" ${isOwner() ? `data-act="edit-health" data-id="${h.id}"` : ''}><span class="ic" style="--c:var(--luteal);--c-soft:var(--luteal-soft)">${svgI('pulse')}</span><div class="g"><div class="t">${mdw(h.date)}</div><div class="m">${[h.weight ? `${h.weight} kg` : '', h.water_ml ? `水 ${h.water_ml} ml` : '', h.exercise_min ? `運動 ${h.exercise_min} 分` : '', h.steps ? `${(+h.steps).toLocaleString()} 步` : '', h.bp_sys ? `血壓 ${h.bp_sys}/${h.bp_dia || ''}` : '', h.checkup ? esc(h.checkup) : ''].filter(Boolean).join('・') || esc(h.note || '')}</div></div></div>`).join('')}</div>` : '<div class="empty">還沒有健康紀錄</div>'}</div>`, {});
+}
+
+/* ---------- 我的：設定清單 ---------- */
+function meHero() {
+  return `<svg viewBox="0 0 400 170" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs><linearGradient id="mh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--hero3)"/><stop offset="1" style="stop-color:var(--hero1)"/></linearGradient>
+      <radialGradient id="mg" cx="70%" cy="34%" r="40%"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    <rect width="400" height="170" fill="url(#mh)"/><rect width="400" height="170" fill="url(#mg)"/>
+    <circle cx="282" cy="58" r="26" fill="#FBF6EA" opacity=".95"/><circle cx="294" cy="50" r="24" style="fill:var(--hero3)" opacity=".9"/>
+    ${[[40, 30], [90, 18], [150, 40], [210, 22], [340, 30], [370, 70], [120, 70]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.4" fill="#fff" opacity=".8"/>`).join('')}
+    <path d="M0 120 60 96 110 112 170 84 230 110 290 90 350 108 400 96V170H0Z" style="fill:var(--hero2)" opacity=".85"/>
+    <path d="M0 140 80 118 150 136 220 116 300 138 360 124 400 132V170H0Z" style="fill:var(--hero1)" opacity=".95"/>
+    <path d="M30 170c8-30 22-46 40-56M44 140c-10-4-18-2-24 4M52 128c-10-6-20-6-26 0M60 120c-6-8-14-10-22-8" stroke="#fff" stroke-opacity=".55" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </svg>`;
+}
+const so = (act, ic, label, right = '', extra = '') => `<button class="so" data-act="${act}" ${extra}>${svgI(ic)}<span class="g">${label}</span><span class="r">${right}${svgI('chevR')}</span></button>`;
+VIEWS.me = () => {
+  const who = S.user ? esc(S.user.email.split('@')[0]) : '本機模式';
+  const modeL = { auto: '自動切換', day: '白天', night: '夜間' }[SET.mode];
+  return `<div class="me-hero">${meHero()}<div class="who"><b>${who}</b><span>${CLOUD ? (isOwner() ? '記錄者' : '伴侶・唯讀') : '資料只存在這台裝置'}</span></div></div>
+    <section class="card set">
+      ${isOwner() ? so('set-cycle', 'cycle', '週期設定', `${r1(A.avgCycle)} 天`) : ''}
+      ${so('set-remind', 'bell', '提醒設定')}
+      ${isOwner() ? so('set-goal', 'target', '健康目標', `${SET.waterGoal} ml`) : ''}
+      ${so('set-theme', 'palette', '主題模式', modeL)}
+      <button class="so" data-act="set-pin">${svgI('lock')}<span class="g">密碼鎖</span><span class="tgl${SET.pin ? ' on' : ''}" aria-hidden="true"></span></button>
+      ${isOwner() ? so('set-backup', 'cloud', '資料備份') : ''}
+      ${isOwner() ? so('export-csv', 'download', '匯出資料', 'CSV') : ''}
+      ${so('about', 'info', '關於月汐', 'v' + APP_VERSION)}
+    </section>
+    <div class="sec"><h2>伴侶連動</h2></div><section class="card">${!CLOUD ? '<div class="warnbox">伴侶連動與行事曆提醒需要雲端同步。照 README 設定 Supabase 後即可使用。</div>' :
+      isOwner() ? `${S.partners.length ? `<div class="list">${S.partners.map(p => `<div class="li"><span class="ic">${svgI('heart')}</span><div class="g"><div class="t">${esc(p.partner_name || '伴侶')}</div><div class="m">${md(p.created_at)} 連動</div></div><button class="btn small danger" data-act="unlink" data-pid="${p.partner_id}">解除</button></div>`).join('')}</div>` : '<p class="note" style="margin-top:0">產生邀請碼給他，他註冊月汐後輸入，就能看到妳分享的內容。</p>'}
+        <button class="btn primary block" data-act="invite" style="margin-top:10px">${svgI('link')} 產生邀請碼</button>
+        <div class="info-card"><h4>他看得到</h4>經期紀錄、排卵期、節奏、親密紀錄、藥物提醒、健康追蹤。<h4 style="margin-top:8px">只有妳看得到</h4>症狀、心情、睡眠、體溫、性慾、試紙與分泌物、避孕資訊、備註。</div>` :
+      `<div class="list"><div class="li"><span class="ic">${svgI('heart')}</span><div class="g"><div class="t">已連動她的月汐</div><div class="m">${S.share ? md(S.share.created_at) + ' 起' : ''}</div></div><button class="btn small danger" data-act="unlink" data-oid="${S.share && S.share.owner_id}">解除</button></div></div>`}</section>
+    <div class="sec"><h2>行事曆提醒</h2></div><section class="card">${CLOUD ? calBlock() : '<div class="empty">需要雲端同步</div>'}</section>
+    ${CLOUD && S.user ? '<button class="btn ghost block" data-act="logout" style="margin-top:16px">登出</button>' : ''}
+    ${!CLOUD && isOwner() ? '<button class="btn ghost block" data-act="demo" style="margin-top:16px">載入範例資料</button>' : ''}`;
+};
+function setCycleSheet() {
+  sheet('週期設定', `<div class="fs"><p class="note" style="margin-top:0">還沒有足夠紀錄時，用這裡的數字預測；記錄 2 次以上月經後，會自動改用妳的實際平均。</p>
+    <div class="two"><label class="f">預設週期長度（天）<input name="c" type="number" min="18" max="50" value="${SET.cycleLen}"></label><label class="f">預設經期天數<input name="p" type="number" min="1" max="12" value="${SET.periodLen}"></label></div>
+    <label class="f">黃體期（天）<select name="l"><option value="0" ${!SET.luteal ? 'selected' : ''}>自動（用體溫確認的週期計算，預設 14）</option>${[10, 11, 12, 13, 14, 15, 16].map(n => `<option value="${n}" ${SET.luteal === n ? 'selected' : ''}>固定 ${n} 天</option>`).join('')}</select></label>
+    <p class="note">黃體期＝排卵到下次月經的天數，大多數人很固定。醫師幫妳確認過的話可以直接設定，排卵預測會更準。</p></div>
+    <div class="fs"><div class="lab">目前計算結果</div><p class="note" style="margin:0">平均週期 ${r1(A.avgCycle)} 天・平均經期 ${r1(A.avgPeriod)} 天・黃體期 ${A.luteal} 天（${A.lutealSamples ? `${A.lutealSamples} 個週期確認` : '預設值'}）</p></div>`, {
+    onSave: async f => { SET.cycleLen = Math.min(50, Math.max(18, +f.c.value || 28)); SET.periodLen = Math.min(12, Math.max(1, +f.p.value || 5)); SET.luteal = +f.l.value || 0; saveSet(); await refresh(); toast('已更新'); },
+  });
+}
+function setRemindSheet() {
+  const row = (k, l, d) => `<button type="button" class="so" data-rm="${k}" style="padding:12px 0">${svgI('bell')}<span class="g">${l}<div class="muted small" style="font-weight:500">${d}</div></span><span class="tgl${SET.rm[k] ? ' on' : ''}"></span></button>`;
+  const f = sheet('提醒設定', `<div class="fs set">${row('period', '下次月經提醒', '預計日前 7 天開始提醒')}${row('ovu', '排卵期提醒', '排卵日前 6 天到後 1 天')}${row('med', '用藥提醒', '今日用藥清單')}${row('tips', '經期與經前小提醒', '照顧自己的建議')}</div>
+    <p class="note">這裡控制 App 內「今日提醒」。要手機跳通知，請到「我的 → 行事曆提醒」訂閱。</p>`, { onSave: async () => { saveSet(); render(); } });
+  f.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { const k = b.dataset.rm; SET.rm[k] = !SET.rm[k]; b.querySelector('.tgl').classList.toggle('on', SET.rm[k]); });
+}
+function setGoalSheet() {
+  sheet('健康目標', `<div class="fs"><label class="f" style="margin:0">每日喝水（ml）<input name="w" type="number" step="100" value="${SET.waterGoal}"></label>
+    <div class="two"><label class="f">每日運動（分鐘）<input name="e" type="number" value="${SET.exGoal}"></label><label class="f">每日步數<input name="s" type="number" step="500" value="${SET.stepGoal}"></label></div></div>`, {
+    onSave: async f => { SET.waterGoal = +f.w.value || 2000; SET.exGoal = +f.e.value || 30; SET.stepGoal = +f.s.value || 8000; saveSet(); render(); },
+  });
+}
+function setThemeSheet() {
+  const f = sheet('主題模式', `<div class="fs"><div class="lab">配色</div><div class="pal-pick">${Object.entries(PALS).map(([k, [n, c]]) => `<button type="button" data-pal="${k}" class="${SET.pal === k ? 'on' : ''}"><span class="sw">${c.map(x => `<i style="background:${x}"></i>`).join('')}</span>${n}</button>`).join('')}</div></div>
+    <div class="fs"><div class="lab">白天／夜間</div><div class="seg">${[['auto', '自動切換'], ['day', '白天'], ['night', '夜間']].map(([k, l]) => `<button type="button" data-mode="${k}" class="${SET.mode === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <p class="note">自動切換會跟著手機的深色模式。</p></div>`, {});
+  f.querySelectorAll('[data-pal]').forEach(b => b.onclick = () => { SET.pal = b.dataset.pal; saveSet(); applyTheme(); f.querySelectorAll('[data-pal]').forEach(x => x.classList.toggle('on', x === b)); render(); });
+  f.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { SET.mode = b.dataset.mode; saveSet(); applyTheme(); f.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x === b)); render(); });
+}
+function setBackupSheet() {
+  const f = sheet('資料備份', `<div class="fs"><p class="note" style="margin-top:0">${CLOUD ? '資料已即時同步到妳的 Supabase。' : '目前資料只存在這台裝置。'}建議每個月下載一次備份，存到雲端硬碟。</p>
+    <div class="row-btns"><button type="button" class="btn ghost" data-act="export">${svgI('download')} 下載備份</button><label class="btn ghost" style="cursor:pointer">${svgI('upload')} 還原備份<input type="file" accept="application/json" hidden id="restoreFile"></label></div></div>`, {});
+  $('#restoreFile', f).onchange = async e => {
+    const file = e.target.files[0]; if (!file) return;
     try {
-      const items = w.chain === 'btc' ? await scanBtc(w.address) : await scanEvm(w.address);
-      S.walletBal[w.id] = { items, at: Date.now() };
-    } catch (e) { S.walletBal[w.id] = { items: [], err: true, at: Date.now() }; }
-  }));
-  cacheSet('wallets', S.walletBal);
-}
-
-/* ---------------- totals ---------------- */
-/* 同一代號的多筆買進合併成一列：股數相加，成本用加權平均（賣出的負股數不影響均價） */
-function stockRows() {
-  const groups = {};
-  for (const s of S.stocks) {
-    const code = String(s.code).trim().toUpperCase();
-    (groups[code] ||= []).push(s);
-  }
-  return Object.entries(groups).map(([code, lots]) => {
-    const q = S.quotes[code];
-    const price = q?.price ?? null;
-    const shares = sum(lots, l => num(l.shares));
-    const buys = lots.filter(l => num(l.shares) > 0 && l.avg_cost != null && l.avg_cost !== '');
-    const buyShares = sum(buys, l => num(l.shares));
-    const cost = buyShares ? sum(buys, l => num(l.shares) * num(l.avg_cost)) / buyShares : 0;
-    const costTotal = cost * shares;
-    const value = price != null ? price * shares : costTotal;
-    const pl = price != null && cost ? (price - cost) * shares : null;
-    const day = q?.prev ? (price - q.prev) / q.prev * 100 : null;
-    lots.sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)));
-    return { code, lots, q, price, shares, avg_cost: cost, costTotal, value, pl, plPct: cost && price != null ? (price - cost) / cost * 100 : null, day, name: lots.find(l => l.name)?.name || q?.name || '' };
-  }).filter(r => r.shares !== 0 || r.lots.length).sort((a, b) => b.value - a.value);
-}
-function cryptoRows() {
-  const map = {};
-  const addRow = (sym, cg, qty, where) => {
-    const k = cg || sym; map[k] ||= { symbol: sym, cg, qty: 0, where: [] };
-    map[k].qty += qty; map[k].where.push(where);
-  };
-  for (const h of S.crypto_holdings) addRow(h.symbol.toUpperCase(), h.cg_id, num(h.qty), h.venue || '手動');
-  for (const w of S.wallets) for (const b of S.walletBal[w.id]?.items || []) addRow(b.symbol, b.cg, b.qty, `${w.label || '錢包'}·${b.chain}`);
-  return Object.values(map).map(r => {
-    const p = S.prices[r.cg];
-    return { ...r, price: p?.twd ?? null, chg: p?.chg ?? null, value: p?.twd != null ? p.twd * r.qty : null };
-  }).sort((a, b) => (b.value || 0) - (a.value || 0));
-}
-function totals() {
-  const bank = sum(S.accounts, a => { const v = toTWD(num(a.balance), a.currency); return Number.isFinite(v) ? v : 0; });
-  const stock = sum(stockRows(), r => r.value || 0);
-  const crypto = sum(cryptoRows(), r => r.value || 0);
-  const debt = sum(S.transactions.filter(t => !t.settled_cycle), billAmt);
-  const recv = sum(S.receivables.filter(r => !r.received_at), r => num(r.amount));
-  const liab = sum(S.liabilities, l => Math.max(0, num(l.balance)));
-  return { bank, stock, crypto, recv, debt, liab, net: bank + stock + crypto + recv - debt - liab };
-}
-async function saveSnapshot() {
-  const t = totals(); const date = todayStr();
-  const row = { date, net: Math.round(t.net), bank: Math.round(t.bank), stock: Math.round(t.stock), crypto: Math.round(t.crypto), debt: Math.round(t.debt + t.liab) };
-  const ex = S.snapshots.find(s => String(s.date).slice(0, 10) === date);
-  try {
-    if (ex) await upd('snapshots', ex.id, row); else await add('snapshots', row);
-  } catch (e) { console.warn('snapshot', e); }
-}
-
-/* ---------------- 信用卡回饋 ----------------
- * card.rewards = [{ id, label, kind:'base'|'bonus', where, pay, rate, cap, min, keywords, tiers, unit, on }]
- *  base：同一筆交易取「符合條件中回饋率最高」的一條；bonus：所有符合的加碼都疊加，各自依帳單週期封頂。
- *  tiers：依「這張卡上個月消費總額」決定加碼率與上限，例：[{min:1,rate:1,cap:300},{min:10001,rate:2,cap:600}]
- * 回饋點數一律以 1 點 = NT$1 估算。
- */
-const WHERE = {
-  all: ['不限地區', () => true],
-  domestic: ['國內（台幣）', t => txnCur(t) === 'TWD'],
-  overseas: ['海外（外幣）', t => txnCur(t) !== 'TWD'],
-  japan: ['日本（日幣）', t => txnCur(t) === 'JPY'],
-  'overseas-ex-jp': ['日本以外的海外', t => txnCur(t) !== 'TWD' && txnCur(t) !== 'JPY'],
-  'dbs-regions': ['日韓泰星美歐', t => ['JPY', 'KRW', 'THB', 'SGD', 'USD', 'EUR', 'GBP', 'CAD', 'CHF', 'SEK', 'DKK', 'NOK', 'CZK', 'MXN'].includes(txnCur(t))],
-};
-const PAYS = {
-  any: ['不限支付方式', () => true],
-  mobile: ['任一行動支付', p => ['applepay', 'googlepay', 'linepay', 'samsungpay'].includes(p)],
-  tap: ['Apple／Google Pay 感應', p => p === 'applepay' || p === 'googlepay'],
-  applepay: ['Apple Pay', p => p === 'applepay'],
-  linepay: ['LINE Pay', p => p === 'linepay'],
-  card: ['實體卡／網購輸入卡號', p => p === 'card'],
-};
-const PAY_OPTIONS = [['card', '實體卡／網購'], ['applepay', 'Apple Pay'], ['linepay', 'LINE Pay'], ['googlepay', 'Google Pay'], ['samsungpay', 'Samsung Pay'], ['other', '其他']];
-const txnCur = t => (t.currency || 'TWD').toUpperCase();
-const txnPay = t => t.pay || (t.source === 'shortcut' ? 'applepay' : /line\s*pay/i.test(t.merchant || '') ? 'linepay' : 'card');
-const ruleId = () => 'r' + Math.random().toString(36).slice(2, 8);
-const pct = v => (Math.round(v * 100) / 100) + '%';
-
-function ruleMatches(r, t) {
-  if (r.on === false || t.source === 'installment' || NO_REWARD_RE.test(t.merchant || '')) return false; // 分期、手續費不享回饋
-  if (!(WHERE[r.where || 'all'] || WHERE.all)[1](t)) return false;
-  if (!(PAYS[r.pay || 'any'] || PAYS.any)[1](txnPay(t))) return false;
-  if (r.min && Math.abs(num(t.amount_twd)) < r.min) return false;
-  if (r.keywords) {
-    const m = (t.merchant || '').toLowerCase();
-    if (!r.keywords.split(/[,，、\s]+/).filter(Boolean).some(k => m.includes(k.toLowerCase()))) return false;
-  }
-  return true;
-}
-function monthKey(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
-/* 分級加碼：預設依「上個月在這張卡的消費」自動判斷；r.manual = { '2026-10': 2 } 可手動指定某月的等級（0 起算） */
-function tierIndex(r, spendPrev, mk) {
-  if (!r.tiers?.length) return -1;
-  if (r.manual && r.manual[mk] != null && r.manual[mk] !== '') return Math.min(+r.manual[mk], r.tiers.length - 1);
-  let idx = -1;
-  r.tiers.forEach((x, i) => { if (spendPrev >= x.min) idx = i; });
-  return idx;
-}
-function tierFor(r, spendPrev, mk) {
-  if (!r.tiers?.length) return { rate: num(r.rate), cap: num(r.cap), tier: -1 };
-  const i = tierIndex(r, spendPrev, mk);
-  return i >= 0 ? { rate: num(r.tiers[i].rate), cap: num(r.tiers[i].cap), tier: i } : { rate: 0, cap: 0, tier: -1 };
-}
-const prevMonthKey = d => monthKey(new Date(d.getFullYear(), d.getMonth() - 1, 1));
-const ruleDesc = r => {
-  const parts = [];
-  if (r.tiers?.length) parts.push('依上月消費分級：' + r.tiers.map(x => `${x.min.toLocaleString()} 元起 ${pct(x.rate)}${x.cap ? `／上限 ${x.cap}` : ''}`).join('，'));
-  else parts.push((r.kind === 'bonus' ? '加碼 ' : '') + pct(num(r.rate)) + (r.cap ? `，每期上限 ${num(r.cap).toLocaleString()}` : '，無上限'));
-  if ((r.where || 'all') !== 'all') parts.push(WHERE[r.where]?.[0]);
-  if ((r.pay || 'any') !== 'any') parts.push(PAYS[r.pay]?.[0]);
-  if (r.min) parts.push(`單筆滿 ${r.min}`);
-  if (r.cap_period === 'month') parts.push('上限依日曆月計算');
-  if (r.round_txn) parts.push('逐筆四捨五入');
-  if (r.manual && Object.keys(r.manual).length) parts.push('有手動指定等級');
-  if (r.keywords) parts.push(`商家含「${r.keywords}」`);
-  return parts.filter(Boolean).join('・');
-};
-
-/* 算一張卡全部交易的回饋。extra = 試算用的假交易 */
-function cardRewards(c, extra) {
-  const rules = c.rewards || [];
-  const txns = S.transactions.filter(t => t.card_id === c.id);
-  if (extra) txns.push(extra);
-  txns.sort((a, b) => a.txn_at.localeCompare(b.txn_at));
-  const monthSpend = {};
-  for (const t of txns) { if (NO_REWARD_RE.test(t.merchant || '') || t.source === 'installment') continue; const k = monthKey(new Date(t.txn_at)); monthSpend[k] = (monthSpend[k] || 0) + Math.max(0, num(t.amount_twd)); }
-  const per = {}, cycles = {}, capUsed = {};
-  for (const t of txns) {
-    const amt = num(t.amount_twd);
-    const d = new Date(t.txn_at);
-    const mk = monthKey(d);
-    const cyc = ymd(closeOnOrAfter(c, parseYmd(ymd(d))));
-    const prev = monthSpend[prevMonthKey(d)] || 0;
-    const C = cycles[cyc] ||= { total: 0, rules: {} };
-    const parts = [];
-    const bases = rules.filter(r => r.kind !== 'bonus' && ruleMatches(r, t)).map(r => ({ r, ...tierFor(r, prev, mk) }));
-    const base = bases.sort((a, b) => b.rate - a.rate)[0];
-    const apply = (x) => {
-      const R = C.rules[x.r.id] ||= { earned: 0, cap: x.cap };
-      R.cap = x.cap;
-      const ck = x.r.id + '|' + (x.r.cap_period === 'month' ? mk : cyc);
-      const used = capUsed[ck] || 0;
-      let v = amt * x.rate / 100;
-      if (x.r.round_txn) v = Math.round(v); // 逐筆四捨五入（例如 MaiCoin U幣）
-      if (v > 0 && x.cap) v = Math.max(0, Math.min(v, x.cap - used));
-      if (v <= 0 && amt > 0) return;
-      capUsed[ck] = used + v;
-      R.earned += v; C.total += v; parts.push({ id: x.r.id, label: x.r.label, v });
-    };
-    if (base) apply(base);
-    if (amt > 0) rules.filter(r => r.kind === 'bonus' && ruleMatches(r, t)).forEach(r => { const tr = tierFor(r, prev, mk); if (tr.rate) apply({ r, ...tr }); });
-    per[t.id] = { v: sum(parts, p => p.v), parts };
-  }
-  return { per, cycles, capUsed, monthSpend };
-}
-function allRewards() {
-  const per = {}, byCard = {};
-  for (const c of S.cards) { const r = cardRewards(c); byCard[c.id] = r; Object.assign(per, r.per); }
-  S.rew = { per, byCard };
-  return S.rew;
-}
-const rewOf = id => S.rew?.per[id]?.v || 0;
-function cycleReward(c, end) { return S.rew?.byCard[c.id]?.cycles[end] || { total: 0, rules: {} }; }
-
-/* 刷哪張最划算 */
-const SCENES = [
-  ['國內一般消費', { currency: 'TWD', pay: 'card' }],
-  ['國內 Apple Pay', { currency: 'TWD', pay: 'applepay' }],
-  ['LINE Pay', { currency: 'TWD', pay: 'linepay', merchant: 'LINE Pay' }],
-  ['日本 Apple Pay 感應', { currency: 'JPY', pay: 'applepay' }],
-  ['日本實體刷卡', { currency: 'JPY', pay: 'card' }],
-  ['其他海外消費', { currency: 'USD', pay: 'card' }],
-];
-function recommend(sceneIdx, amountTwd) {
-  const [, sc] = SCENES[sceneIdx];
-  const now = new Date().toISOString();
-  return S.cards.map(c => {
-    const fake = { id: '__sim', card_id: c.id, amount: amountTwd, amount_twd: amountTwd, txn_at: now, ...sc };
-    const r = cardRewards(c, fake).per.__sim || { v: 0, parts: [] };
-    return { c, v: r.v, parts: r.parts };
-  }).sort((a, b) => b.v - a.v);
-}
-
-/* 建議回饋規則（依 2026 年各卡公開權益整理，需自行確認登錄、等級、新戶資格） */
-const REWARD_PRESETS = {
-  吉鶴: [
-    { label: '國內一般', kind: 'base', where: 'domestic', rate: 1, unit: '現金回饋' },
-    { label: '日本實體（日幣）', kind: 'base', where: 'japan', rate: 2.5, unit: '現金回饋' },
-    { label: '其他海外', kind: 'base', where: 'overseas-ex-jp', rate: 1, unit: '現金回饋' },
-    { label: '日本 Apple／Google Pay 加碼（需登錄）', kind: 'bonus', where: 'japan', pay: 'tap', rate: 1.5, cap: 600, min: 100, unit: '現金回饋' },
-  ],
-  MaiCoin: [
-    { label: '一般消費', kind: 'base', rate: 0.5, unit: 'U幣', round_txn: true },
-    { label: '等級加碼（依上月消費）', kind: 'bonus', unit: 'U幣', cap_period: 'month', tiers: [{ min: 1, rate: 1, cap: 300 }, { min: 10001, rate: 2, cap: 600 }, { min: 30001, rate: 4, cap: 1200 }] },
-  ],
-  星展: [
-    { label: '國內一般', kind: 'base', where: 'domestic', rate: 1, unit: '現金積點' },
-    { label: '海外一般', kind: 'base', where: 'overseas', rate: 1.5, unit: '現金積點' },
-    { label: '日韓泰星美歐實體加碼', kind: 'bonus', where: 'dbs-regions', rate: 3.5, cap: 800, unit: '現金積點' },
-  ],
-  DAWHO: [
-    { label: '國內一般', kind: 'base', where: 'domestic', rate: 1, unit: '現金回饋' },
-    { label: '海外一般', kind: 'base', where: 'overseas', rate: 2, unit: '現金回饋' },
-    { label: '大戶等級加碼', kind: 'bonus', rate: 2.5, cap: 400, unit: '現金回饋' },
-    { label: '大戶 Plus 加碼（達標才開）', kind: 'bonus', rate: 4, cap: 1000, unit: '現金回饋', on: false },
-  ],
-  DAWAY: [
-    { label: '國內一般', kind: 'base', where: 'domestic', rate: 0.5, unit: 'LINE POINTS' },
-    { label: '海外一般', kind: 'base', where: 'overseas', rate: 2.5, unit: 'LINE POINTS' },
-    { label: 'DAWAY GO＋LINE Pay 加碼', kind: 'bonus', pay: 'linepay', rate: 1.5, cap: 300, unit: 'LINE POINTS' },
-    { label: '新戶 LINE Pay 加碼（新戶才開）', kind: 'bonus', pay: 'linepay', rate: 6, cap: 500, unit: 'LINE POINTS', on: false },
-  ],
-};
-function presetRewardsFor(card) {
-  const n = `${card.name} ${card.wallet_name || ''}`;
-  const key = Object.keys(REWARD_PRESETS).find(k => n.toLowerCase().includes(k.toLowerCase()));
-  return key ? REWARD_PRESETS[key].map(r => ({ id: ruleId(), on: true, ...r })) : null;
-}
-
-function rewardPanel(c, st) {
-  const rules = c.rewards || [];
-  const R = cycleReward(c, st.open.end);
-  const B = st.billed ? cycleReward(c, st.billed.end) : null;
-  const unit = [...new Set(rules.map(r => r.unit).filter(Boolean))].join('／') || '回饋';
-  const CR = S.rew?.byCard[c.id] || { capUsed: {}, monthSpend: {} };
-  const now = new Date(), mk = monthKey(now), pmk = prevMonthKey(now);
-  const meters = rules.filter(r => r.on !== false && (r.cap || r.tiers)).map(r => {
-    let earned, cap, note = '';
-    if (r.tiers?.length) {
-      const tr = tierFor(r, CR.monthSpend[pmk] || 0, mk);
-      cap = tr.cap;
-      const manual = r.manual && r.manual[mk] != null && r.manual[mk] !== '';
-      note = tr.tier >= 0 ? `本月 Lv${tr.tier + 1}（加碼 ${pct(tr.rate)}）${manual ? '・手動指定' : `・依 App 記錄的上月消費 ${money(CR.monthSpend[pmk] || 0)}`}` : '上月沒有消費紀錄，本月不加碼（可點規則手動指定等級）';
-    } else cap = num(r.cap);
-    if (r.cap_period === 'month') earned = CR.capUsed[r.id + '|' + mk] || 0;
-    else earned = (R.rules[r.id] || { earned: 0 }).earned;
-    return `<div class="rmeter"><div class="rm-top"><span>${esc(r.label)}${r.cap_period === 'month' ? `（${now.getMonth() + 1} 月）` : ''}</span><span class="num">${Math.round(earned)}${cap ? ` / ${cap}` : ''}</span></div>
-      ${cap ? `<div class="meter"><i style="width:${Math.min(100, earned / cap * 100).toFixed(1)}%"></i></div>` : ''}${note ? `<div class="meta">${note}</div>` : ''}</div>`;
-  }).join('');
-  const list = rules.map((r, i) => `<div class="row click rule${r.on === false ? ' off' : ''}" data-act="edit-rule" data-card="${c.id}" data-i="${i}">
-      <div class="grow"><div class="title">${esc(r.label)}</div><div class="meta">${esc(ruleDesc(r))}</div></div>
-      <button class="tgl${r.on === false ? '' : ' on'}" data-act="toggle-rule" data-card="${c.id}" data-i="${i}" aria-pressed="${r.on !== false}" aria-label="啟用"><i></i></button></div>`).join('');
-  const hasPreset = !!presetRewardsFor(c);
-  return `<h2>回饋</h2><section class="panel">
-    <div class="rew-head"><div><small>本期預估回饋</small><b>${money(R.total)}</b><span class="meta"> ${esc(unit)}</span></div>
-      ${B ? `<div class="r"><small>${md(st.billed.end)} 帳單回饋</small><b>${money(B.total)}</b></div>` : ''}</div>
-    ${meters ? `<div class="rmeters">${meters}</div>` : ''}
-  </section>
-  <section class="panel">${list || '<div class="empty">還沒有回饋規則</div>'}
-    <div class="actions"><button class="btn small" data-act="add-rule" data-card="${c.id}">新增規則</button>
-    ${hasPreset ? `<button class="btn small ghost" data-act="preset-rules" data-card="${c.id}">${rules.length ? '重設為建議規則' : '套用建議規則'}</button>` : ''}</div>
-  </section>`;
-}
-
-function formRule(c, i) {
-  const rules = (c.rewards || []).slice();
-  const r = i != null ? rules[i] : { kind: 'bonus', where: 'all', pay: 'any', unit: rules[0]?.unit || '現金回饋' };
-  const tierStr = (r.tiers || []).map(x => `${x.min}:${x.rate}:${x.cap || 0}`).join(', ');
-  openForm({
-    title: i != null ? '編輯回饋規則' : '新增回饋規則', data: { ...r, tiers: tierStr, on: r.on !== false, cap_period: r.cap_period || 'cycle',
-      lv_cur: r.manual?.[monthKey(new Date())] ?? '', lv_prev: r.manual?.[prevMonthKey(new Date())] ?? '' },
-    note: '<p class="muted" style="margin-top:-6px;font-size:13px">基本回饋取符合條件中最高的一條；加碼會疊加在基本回饋上，各自依帳單週期封頂。</p>',
-    fields: [
-      { k: 'label', label: '名稱', req: 1, ph: '例：LINE Pay 加碼' },
-      { k: 'kind', label: '類型', type: 'select', options: [['base', '基本回饋'], ['bonus', '加碼回饋']] },
-      { k: 'rate', label: '回饋率（%）', type: 'number', hint: '有填分級時以分級為準' },
-      { k: 'cap', label: '每期回饋上限（點／元，0 = 無上限）', type: 'number' },
-      { k: 'where', label: '適用地區', type: 'select', options: Object.entries(WHERE).map(([k, v]) => [k, v[0]]) },
-      { k: 'pay', label: '支付方式', type: 'select', options: Object.entries(PAYS).map(([k, v]) => [k, v[0]]) },
-      { k: 'min', label: '單筆最低金額（選填）', type: 'number' },
-      { k: 'keywords', label: '商家關鍵字（選填，逗號分隔）', ph: '例：全聯, 7-ELEVEN' },
-      { k: 'tiers', label: '依上月消費分級（選填）', ph: '1:1:300, 10001:2:600, 30001:4:1200', hint: '格式「上月消費門檻:回饋率:上限」，用逗號隔開' },
-      ...(r.tiers?.length ? [
-        { k: 'lv_cur', label: `${new Date().getMonth() + 1} 月等級`, type: 'select', options: [['', '自動（依上月消費）'], ...r.tiers.map((x, i) => [String(i), `Lv${i + 1}（${pct(x.rate)}，上限 ${x.cap}）`])], hint: 'App 沒有完整的上月紀錄時，照銀行顯示的等級手動指定' },
-        { k: 'lv_prev', label: `${(new Date().getMonth() + 11) % 12 + 1} 月等級`, type: 'select', options: [['', '自動（依上月消費）'], ...r.tiers.map((x, i) => [String(i), `Lv${i + 1}（${pct(x.rate)}，上限 ${x.cap}）`])] },
-      ] : []),
-      { k: 'cap_period', label: '回饋上限怎麼算', type: 'select', options: [['cycle', '每個帳單週期'], ['month', '每個日曆月（1 日到月底）']] },
-      { k: 'round_txn', label: '每筆回饋四捨五入到整數', type: 'check' },
-      { k: 'unit', label: '回饋形式', ph: '現金回饋、LINE POINTS、U幣…' },
-      { k: 'on', label: '啟用這條規則', type: 'check' },
-    ],
-    onSave: async v => {
-      const tiers = (v.tiers || '').split(/[,，]/).map(s => s.trim()).filter(Boolean).map(s => { const [min, rate, cap] = s.split(':').map(Number); return { min: min || 0, rate: rate || 0, cap: cap || 0 }; }).filter(x => x.rate);
-      const manual = { ...(r.manual || {}) };
-      const setLv = (k, val) => { if (val === '' || val == null) delete manual[k]; else manual[k] = +val; };
-      if ('lv_cur' in v) setLv(monthKey(new Date()), v.lv_cur);
-      if ('lv_prev' in v) setLv(prevMonthKey(new Date()), v.lv_prev);
-      const nr = { id: r.id || ruleId(), label: v.label, kind: v.kind, where: v.where, pay: v.pay, rate: v.rate || 0, cap: v.cap || 0, min: v.min || 0, keywords: v.keywords, unit: v.unit, on: v.on,
-        cap_period: v.cap_period === 'month' ? 'month' : 'cycle', round_txn: !!v.round_txn, ...(tiers.length ? { tiers } : {}), ...(Object.keys(manual).length ? { manual } : {}) };
-      if (i != null) rules[i] = nr; else rules.push(nr);
-      await upd('cards', c.id, { rewards: rules });
-    },
-    onDelete: i != null && (async () => { rules.splice(i, 1); await upd('cards', c.id, { rewards: rules }); }),
-  });
-}
-
-function openRecommend() {
-  const m = $('#modal');
-  const draw = () => {
-    const si = +($('#recScene')?.value || 0), amt = Math.max(1, num($('#recAmt')?.value) || 1000);
-    const res = recommend(si, amt);
-    $('#recOut').innerHTML = res.length ? res.map((x, k) => `<div class="row">
-        <span class="rank${k === 0 ? ' top' : ''}">${k + 1}</span>
-        <div class="grow"><div class="title">${esc(x.c.name)}</div><div class="meta one">${x.parts.map(p => `${esc(p.label)} ${Math.round(p.v * 10) / 10}`).join('＋') || '沒有符合的回饋'}</div></div>
-        <div class="right"><div class="amt">${money(x.v, 'TWD', x.v < 100 ? 1 : 0)}</div><div class="meta">${pct(x.v / amt * 100)}</div></div></div>`).join('')
-      : '<div class="empty">先新增信用卡和回饋規則</div>';
-  };
-  m.innerHTML = `<div class="sheet"><h3>這筆刷哪張？</h3>
-    <label>消費情境<select id="recScene">${SCENES.map(([n], i) => `<option value="${i}">${n}</option>`).join('')}</select></label>
-    <label>金額（台幣）<input id="recAmt" type="number" inputmode="decimal" value="1000"></label>
-    <p class="meta" style="margin:-4px 0 6px">已扣掉各卡本期已用掉的回饋上限</p>
-    <div id="recOut"></div>
-    <div class="actions"><button class="btn ghost" data-f="close">關閉</button></div></div>`;
-  m.hidden = false;
-  const close = () => { m.hidden = true; m.innerHTML = ''; };
-  m.onclick = e => { if (e.target === m || e.target.dataset.f === 'close') close(); };
-  $('#recScene').onchange = draw; $('#recAmt').oninput = draw;
-  draw();
-}
-
-/* 提早繳款：把已出帳單標成已繳，不再等扣款日 */
-function formPaidBill(c) {
-  const st = cardState(c), bl = st.billed; if (!bl) return;
-  const acc = S.accounts.find(a => a.id === c.debit_account_id);
-  openForm({
-    title: `${c.name}：${md(bl.end)} 帳單已繳`, note: `<p class="muted" style="margin-top:-6px">${money(bl.total)}，原訂 ${md(ymd(bl.due))} 扣款</p>`,
-    data: { mode: 'mark' },
-    fields: [{ k: 'mode', label: '帳戶餘額要怎麼處理？', type: 'select', options: [
-      ['mark', '只標記已繳（我填的帳戶餘額已經是繳完後的）'],
-      ...(acc ? [['deduct', `從 ${acc.name} 扣除 ${money(bl.total)}`]] : []),
-    ] }],
-    onSave: async v => {
-      const E = bl.end, amt = Math.round(bl.total * 100) / 100;
-      try { await add('settlements', { card_id: c.id, cycle_end: E, amount: amt, account_id: acc?.id || null }); } catch (_) { /* 已有紀錄 */ }
-      if (v.mode === 'deduct' && acc) {
-        const delta = -fromTWD(amt, acc.currency), after = Math.round((num(acc.balance) + delta) * 100) / 100;
-        await upd('accounts', acc.id, { balance: after });
-        await add('balance_log', { account_id: acc.id, delta, balance_after: after, note: `${c.name} ${md(E)} 帳單（提早繳款）` });
-      }
-      for (const t of bl.items) await upd('transactions', t.id, { settled_cycle: E });
-      if (!c.last_settled || String(c.last_settled).slice(0, 10) < E) await upd('cards', c.id, { last_settled: E });
-      toast(`已標記 ${md(E)} 帳單繳清，下次扣款 ${md(ymd(st.open.due))}`);
-    },
-  });
-}
-
-/* ---------------- 匯入刷卡紀錄（CSV） ----------------
- * 欄位：日期,卡片,商家,金額,幣別,台幣金額,海外,支付方式,手續費
- * 只有前四欄必填；卡片名稱可以只寫一部分（例如 MaiCoin、星展）。
- */
-function parseCSV(text) {
-  const rows = []; let row = [], cur = '', q = false;
-  text = text.replace(/^﻿/, '');
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (q) { if (ch === '"' && text[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
-    else if (ch === '"') q = true;
-    else if (ch === ',' || ch === '\t') { row.push(cur); cur = ''; }
-    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; }
-    else cur += ch;
-  }
-  if (cur || row.length) { row.push(cur); rows.push(row); }
-  return rows.filter(r => r.some(x => x.trim()));
-}
-const HEAD = { 日期: 'date', 入帳日: 'date', 消費日: 'date', 卡片: 'card', 信用卡: 'card', 商家: 'merchant', 摘要: 'merchant', 說明: 'merchant', 金額: 'amount', 幣別: 'currency', 台幣金額: 'twd', 海外: 'overseas', 支付方式: 'pay', 手續費: 'fee' };
-function matchCard(txt) {
-  const n = String(txt || '').toLowerCase().replace(/\s/g, '');
-  if (!n) return null;
-  return S.cards.find(c => [c.name, c.wallet_name].filter(Boolean).some(k => { const kk = k.toLowerCase().replace(/\s/g, ''); return n.includes(kk) || kk.includes(n); })) || null;
-}
-function parseImport(text) {
-  const rows = parseCSV(text); if (!rows.length) return { items: [], errors: ['沒有資料'] };
-  const head = rows[0].map(h => HEAD[h.trim()] || h.trim().toLowerCase());
-  const hasHead = head.includes('date') && head.includes('amount');
-  const keys = hasHead ? head : ['date', 'card', 'merchant', 'amount', 'currency', 'twd', 'overseas', 'pay', 'fee'];
-  const items = [], errors = [];
-  (hasHead ? rows.slice(1) : rows).forEach((r, i) => {
-    const o = {}; keys.forEach((k, j) => o[k] = (r[j] || '').trim());
-    const line = i + (hasHead ? 2 : 1);
-    const dm = o.date.replace(/[年月.]/g, '/').replace(/日/g, '').match(/(\d{2,4})[\/-](\d{1,2})[\/-](\d{1,2})/);
-    if (!dm) { errors.push(`第 ${line} 行：看不懂日期「${o.date}」`); return; }
-    let y = +dm[1]; if (y < 1911 && y > 99) y += 1911; if (y < 100) y += 2000; // 民國年
-    const amount = parseFloat(String(o.amount).replace(/[,\s$NT元]/g, ''));
-    if (!Number.isFinite(amount)) { errors.push(`第 ${line} 行：看不懂金額「${o.amount}」`); return; }
-    const card = matchCard(o.card);
-    if (!card) { errors.push(`第 ${line} 行：對不到卡片「${o.card}」`); return; }
-    const currency = (o.currency || 'TWD').toUpperCase();
-    const twd = o.twd ? parseFloat(o.twd.replace(/,/g, '')) : currency === 'TWD' ? amount : Math.round(toTWD(amount, currency) * 100) / 100;
-    const overseas = /^(1|y|yes|true|是|v|✓|海外)$/i.test(o.overseas || '') || currency !== 'TWD';
-    const at = new Date(y, +dm[2] - 1, +dm[3], 12);
-    const feeRow = FEE_RE.test(o.merchant);
-    const fee = o.fee !== undefined && o.fee !== '' ? parseFloat(o.fee) : (overseas && !feeRow ? Math.round(Math.abs(twd) * feeRate(card) / 100) * Math.sign(twd || 1) : 0);
-    const pay = ({ 'apple pay': 'applepay', applepay: 'applepay', 'line pay': 'linepay', linepay: 'linepay', 'google pay': 'googlepay' })[(o.pay || '').toLowerCase()] || (/line\s*pay/i.test(o.merchant) ? 'linepay' : 'card');
-    items.push({ card, row: { card_id: card.id, card_label: card.name, merchant: o.merchant, amount, currency, amount_twd: twd, fee, pay, txn_at: at.toISOString(), source: 'import' } });
-  });
-  return { items, errors };
-}
-function isDup(r) {
-  return S.transactions.some(t => t.card_id === r.card_id && txnDate(t) === ymd(new Date(r.txn_at)) && Math.abs(num(t.amount_twd) - num(r.amount_twd)) < 0.01 && (t.merchant || '').trim() === (r.merchant || '').trim());
-}
-function openImport() {
-  const m = $('#modal');
-  m.innerHTML = `<div class="sheet"><h3>匯入刷卡紀錄</h3>
-    <p class="meta" style="margin-top:-8px">選 Claude 整理好的 CSV 檔，或直接貼上內容。第一行是標題：日期,卡片,商家,金額,幣別,台幣金額,海外,支付方式</p>
-    <label class="btn" style="margin:6px 0 10px;color:var(--text)">選擇 CSV 檔<input type="file" accept=".csv,text/csv,text/plain" id="impFile" hidden></label>
-    <label>或貼上內容<textarea id="impText" rows="6" style="font-size:13px;font-family:ui-monospace,Menlo,monospace" placeholder="日期,卡片,商家,金額\n2026/10/04,MaiCoin,APPLE.COM/BILL,1180"></textarea></label>
-    <div id="impPrev" class="meta"></div>
-    <div class="actions"><button class="btn ghost" data-f="close">取消</button><button class="btn primary" id="impGo" disabled>匯入</button></div></div>`;
-  m.hidden = false;
-  const close = () => { m.hidden = true; m.innerHTML = ''; };
-  m.onclick = e => { if (e.target === m || e.target.dataset.f === 'close') close(); };
-  let parsed = null;
-  const preview = () => {
-    parsed = parseImport($('#impText').value);
-    const fresh = parsed.items.filter(x => !isDup(x.row));
-    const past = fresh.filter(x => x.card.last_settled && ymd(new Date(x.row.txn_at)) <= String(x.card.last_settled).slice(0, 10)).length;
-    const byCard = {}; fresh.forEach(x => byCard[x.card.name] = (byCard[x.card.name] || 0) + billAmt(x.row));
-    $('#impPrev').innerHTML = `${fresh.length ? `可匯入 <b>${fresh.length}</b> 筆：${Object.entries(byCard).map(([k, v]) => `${esc(k)} ${money(v)}`).join('、')}` : '還沒有可匯入的資料'}
-      ${parsed.items.length - fresh.length ? `<br>略過 ${parsed.items.length - fresh.length} 筆重複` : ''}
-      ${past ? `<br>${past} 筆落在已扣款的帳單週期，會直接標記為已繳` : ''}
-      ${parsed.errors.length ? `<br><span class="neg">${parsed.errors.slice(0, 6).map(esc).join('<br>')}${parsed.errors.length > 6 ? `<br>…還有 ${parsed.errors.length - 6} 個問題` : ''}</span>` : ''}`;
-    $('#impGo').disabled = !fresh.length;
-  };
-  $('#impText').oninput = preview;
-  $('#impFile').onchange = async e => { $('#impText').value = await e.target.files[0].text(); preview(); };
-  $('#impGo').onclick = async () => {
-    const fresh = parsed.items.filter(x => !isDup(x.row));
-    $('#impGo').disabled = true; $('#impGo').textContent = '匯入中…';
-    let n = 0;
-    try {
-      for (const x of fresh) {
-        const r = { ...x.row };
-        if (x.card.last_settled && ymd(new Date(r.txn_at)) <= String(x.card.last_settled).slice(0, 10)) r.settled_cycle = 'past';
-        await add('transactions', r); n++;
-      }
-      close(); render(); toast(`已匯入 ${n} 筆刷卡紀錄`);
-    } catch (err) { toast(`匯入到第 ${n + 1} 筆時失敗：${err.message}`); $('#impGo').disabled = false; $('#impGo').textContent = '匯入'; }
+      const j = JSON.parse(await file.text()); if (j.app !== 'lunaria') throw new Error('不是月汐的備份檔');
+      if (!confirm('會把備份裡的紀錄加回來（相同日期的每日紀錄會被覆蓋），確定嗎？')) return;
+      const strip = r => { const { id, user_id, created_by, created_at, ...x } = r; return CLOUD ? { ...x, user_id: S.ownerId } : x; };
+      const have = new Set(S.cycles.map(c => String(c.start_date).slice(0, 10)));
+      for (const c of j.cycles || []) if (!have.has(String(c.start_date).slice(0, 10))) await DB.insert('cycles', strip(c));
+      for (const l of j.day_logs || []) await DB.upsert('day_logs', strip(l));
+      for (const h of j.health || []) await DB.insert('health', strip(h));
+      closeSheet(); await refresh(); toast('已還原');
+    } catch (err) { toast('還原失敗：' + err.message); }
   };
 }
-
-/* ---------------- 帳戶轉帳 ---------------- */
-function formTransfer(from) {
-  if (S.accounts.length < 2) { toast('至少要有兩個帳戶才能轉帳'); return; }
-  const opts = S.accounts.map(a => [a.id, `${a.name}（${money(num(a.balance), a.currency)}）`]);
-  openForm({
-    title: '帳戶轉帳', data: { from: from?.id || S.accounts[0].id, to: S.accounts.find(a => a.id !== (from?.id || S.accounts[0].id))?.id, date: todayStr() },
-    fields: [
-      { k: 'from', label: '轉出帳戶', type: 'select', options: opts },
-      { k: 'to', label: '轉入帳戶', type: 'select', options: opts },
-      { k: 'amount', label: '轉出金額（轉出帳戶的幣別）', type: 'number', req: 1 },
-      { k: 'to_amount', label: '轉入金額（幣別不同時填，例如換匯後實際入帳）', type: 'number', hint: '留空：同幣別等於轉出金額；不同幣別依即時匯率換算' },
-      { k: 'fee', label: '手續費（從轉出帳戶扣，選填）', type: 'number', hint: '跨行轉帳常見 NT$10–15' },
-      { k: 'note', label: '備註', ph: '例：存到大戶、換美金' },
-    ],
-    onSave: async v => {
-      const A = S.accounts.find(a => a.id === v.from), B = S.accounts.find(a => a.id === v.to);
-      if (!A || !B || A.id === B.id) throw new Error('轉出和轉入要選不同帳戶');
-      if (!(v.amount > 0)) throw new Error('金額要大於 0');
-      const inAmt = v.to_amount != null ? v.to_amount : (A.currency === B.currency ? v.amount : Math.round(fromTWD(toTWD(v.amount, A.currency), B.currency) * 100) / 100);
-      if (!Number.isFinite(inAmt)) throw new Error('抓不到匯率，請手動填轉入金額');
-      const fee = num(v.fee);
-      const aAfter = Math.round((num(A.balance) - v.amount - fee) * 100) / 100;
-      const bAfter = Math.round((num(B.balance) + inAmt) * 100) / 100;
-      const tag = v.note ? `・${v.note}` : '';
-      await upd('accounts', A.id, { balance: aAfter });
-      await add('balance_log', { account_id: A.id, delta: -(v.amount + fee), balance_after: aAfter, note: `轉帳 → ${B.name}${fee ? `（含手續費 ${fee}）` : ''}${tag}` });
-      await upd('accounts', B.id, { balance: bAfter });
-      await add('balance_log', { account_id: B.id, delta: inAmt, balance_after: bAfter, note: `轉帳 ← ${A.name}${tag}` });
-      toast(`已從 ${A.name} 轉 ${money(v.amount, A.currency)} 到 ${B.name}`);
-    },
-  });
-}
-
-/* ---------------- 應收款與分期／負債 ---------------- */
-function addMonths(dateStr, n, day) { const d = parseYmd(dateStr); return mkDay(d.getFullYear(), d.getMonth() + n, day || d.getDate()); }
-/* 捷徑記進來的外幣交易，自動補上預估的國外交易手續費 */
-async function autoFees() {
-  for (const t of S.transactions) {
-    if (t.fee != null || t.settled_cycle || t.source !== 'shortcut' || (t.currency || 'TWD') === 'TWD' || isFeeRow(t)) continue;
-    const c = S.cards.find(x => x.id === t.card_id);
-    await upd('transactions', t.id, { fee: Math.round(Math.abs(num(t.amount_twd)) * feeRate(c) / 100) });
+function exportCSV() {
+  const lb = logsBy(), rows = [['日期', '週期第幾天', '經量', '基礎體溫', '排卵試紙', '分泌物', '症狀', '心情', '睡眠品質', '睡眠時數', '性慾', '備註']];
+  const dates = Object.keys(lb).sort();
+  for (const d of dates) {
+    const l = lb[d], cyc = A.cycles.filter(c => c.s <= toD(d)).pop();
+    rows.push([d, cyc ? diff(d, cyc.s) + 1 : '', FLOW[l.flow || 0][1], l.bbt ?? '', (LH.find(x => x[0] === l.lh) || ['', ''])[1], (MUCUS.find(x => x[0] === l.mucus) || ['', ''])[1], (l.symptoms || []).join('、'), (l.moods || []).join('、'), l.sleep_q ?? '', l.sleep_h ?? '', l.libido != null ? LIBIDO[l.libido][1] : '', l.note || '']);
   }
+  const csv = '﻿' + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const u = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); const a = document.createElement('a'); a.href = u; a.download = `lunaria-${ymd(today())}.csv`; a.click(); URL.revokeObjectURL(u);
 }
-let installing = false;
-async function runInstallments() {
-  if (installing || !S.liabilities.length) return; installing = true;
-  const done = [];
-  try {
-    const today = todayStr();
-    for (const L of S.liabilities) {
-      let next = L.next_date && String(L.next_date).slice(0, 10), left = +L.periods_left || 0, bal = num(L.balance);
-      const amt = num(L.monthly), day = next ? parseYmd(next).getDate() : 0;
-      if (!next || !amt || left <= 0) continue;
-      let changed = false, guard = 0;
-      while (next <= today && left > 0 && guard++ < 60) {
-        const pay = Math.min(amt, bal > 0 ? bal : amt);
-        const k = (+L.periods_total || 0) ? (+L.periods_total - left + 1) : null;
-        const label = `${L.name}${k ? ` 第 ${k}/${L.periods_total} 期` : ' 分期'}`;
-        if (L.card_id) {
-          const card = S.cards.find(c => c.id === L.card_id);
-          const at = parseYmd(next); at.setHours(12);
-          const row = { card_id: L.card_id, merchant: label, amount: pay, currency: 'TWD', amount_twd: pay, pay: 'card', source: 'installment', txn_at: at.toISOString(), card_label: card?.name || '' };
-          if (card?.last_settled && next <= String(card.last_settled).slice(0, 10)) row.settled_cycle = 'past';
-          await add('transactions', row);
-        } else if (L.account_id) {
-          const acc = S.accounts.find(a => a.id === L.account_id);
-          if (acc) {
-            const after = Math.round((num(acc.balance) - fromTWD(pay, acc.currency)) * 100) / 100;
-            await upd('accounts', acc.id, { balance: after });
-            await add('balance_log', { account_id: acc.id, delta: -fromTWD(pay, acc.currency), balance_after: after, note: label });
-          }
-        }
-        bal = Math.max(0, Math.round((bal - pay) * 100) / 100); left--; changed = true;
-        done.push(label);
-        next = ymd(addMonths(next, 1, day));
-      }
-      if (changed) await upd('liabilities', L.id, { balance: bal, periods_left: left, next_date: next });
-    }
-  } finally { installing = false; }
-  if (done.length) toast('分期已入帳：' + done.join('、'), 5000);
+function aboutSheet() {
+  sheet('關於月汐', `<div class="fs" style="text-align:center"><div class="logo big" style="margin:6px 0">${$('.logo svg').outerHTML}<span>月汐<small>LUNARIA</small></span></div><p class="muted">與自己的節奏，溫柔同行</p><p class="note">版本 ${APP_VERSION}</p></div>
+    <div class="fs"><p class="note" style="margin:0">排卵依基礎體溫（3-over-6）、排卵試紙、分泌物判斷，沒有資料時依個人黃體期推算並標示誤差天數。<br><br>預測與排卵判斷僅供參考，不能取代醫療建議，也不建議單獨作為避孕方法。週期持續不規律或身體不適，請諮詢婦產科醫師。</p></div>`, {});
 }
 
-function recvSection() {
-  const open = S.receivables.filter(r => !r.received_at).sort((a, b) => String(a.due_date || '9').localeCompare(String(b.due_date || '9')));
-  const doneList = S.receivables.filter(r => r.received_at).sort((a, b) => String(b.received_at).localeCompare(String(a.received_at))).slice(0, 5);
-  const row = r => `<div class="row click" data-act="edit-recv" data-id="${r.id}">
-      <div class="grow"><div class="title">${esc(r.name)}</div><div class="meta">${r.received_at ? `${new Date(r.received_at).toLocaleDateString('zh-TW')} 已收到` : r.due_date ? `預計 ${md(r.due_date)} 收到${daysUntil(parseYmd(r.due_date)) < 0 ? '・<span class="warn">已過期</span>' : ''}` : '未定收款日'}${r.note ? '・' + esc(r.note) : ''}</div></div>
-      <div class="right"><div class="amt${r.received_at ? ' soft' : ''}">${money(num(r.amount))}</div>${r.received_at ? '' : `<button class="btn small" data-act="got-recv" data-id="${r.id}" style="margin-top:4px">已收到</button>`}</div></div>`;
-  return `<h2>應收款 <button class="btn small" data-act="add-recv">＋ 新增</button></h2>
-    <section class="panel">${open.map(row).join('') || '<div class="empty">別人欠你、還沒入帳的錢記在這裡</div>'}
-    ${doneList.length ? `<div class="meta" style="margin:12px 0 2px">最近收到</div>${doneList.map(row).join('')}` : ''}</section>`;
-}
-function liabSection() {
-  const rows = S.liabilities.slice().sort((a, b) => num(b.balance) - num(a.balance)).map(L => {
-    const card = S.cards.find(c => c.id === L.card_id), acc = S.accounts.find(a => a.id === L.account_id);
-    const total = +L.periods_total || 0, left = +L.periods_left || 0;
-    const prog = total ? (total - left) / total * 100 : null;
-    const how = card ? `掛在 ${esc(card.name)}` : acc ? `從 ${esc(acc.name)} 扣` : '手動';
-    return `<div class="row click" data-act="edit-liab" data-id="${L.id}">
-      <div class="grow"><div class="title">${esc(L.name)}</div>
-        <div class="meta">${L.monthly ? `每期 ${money(num(L.monthly))}・` : ''}${left ? `剩 ${left} 期・` : ''}${L.next_date && left ? `下次 ${md(L.next_date)}・` : ''}${how}</div>
-        ${prog != null ? `<div class="meter"><i style="width:${prog.toFixed(1)}%"></i></div>` : ''}</div>
-      <div class="right"><div class="amt">${money(num(L.balance))}</div><div class="meta">${left ? '未繳' : '已繳清'}</div></div></div>`;
-  }).join('');
-  return `<h2>分期／負債 <button class="btn small" data-act="add-liab">＋ 新增</button></h2>
-    <section class="panel">${rows || '<div class="empty">信用卡分期、學貸、車貸等。設定每期金額與下次扣款日，到期會自動記進信用卡或扣帳戶</div>'}</section>`;
-}
-function formRecv(r) {
-  openForm({
-    title: r ? '編輯應收款' : '新增應收款', data: r ? { ...r, got: !!r.received_at } : {},
-    fields: [
-      { k: 'name', label: '項目', req: 1, ph: '例：朋友代墊機票、公司報帳' },
-      { k: 'amount', label: '金額（台幣）', type: 'number', req: 1 },
-      { k: 'due_date', label: '預計收到日期（選填）', type: 'date' },
-      { k: 'note', label: '備註' },
-      ...(r ? [{ k: 'got', label: '已經收到', type: 'check' }] : []),
-    ],
-    onSave: async v => {
-      const row = { name: v.name, amount: v.amount, due_date: v.due_date || null, note: v.note };
-      if (r) { row.received_at = v.got ? (r.received_at || new Date().toISOString()) : null; await upd('receivables', r.id, row); }
-      else await add('receivables', row);
-    },
-    onDelete: r && (() => del('receivables', r.id)),
+/* ---------- 密碼鎖（存在這台裝置） ---------- */
+async function sha(s) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('lunaria:' + s)); return Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, '0')).join(''); }
+function pinPad(title, onDone) {
+  const el = document.createElement('div'); el.className = 'lock';
+  el.innerHTML = `<div class="logo big">${$('.logo svg').outerHTML}<span>月汐<small>LUNARIA</small></span></div><p class="t">${title}</p><div class="dots">${'<i></i>'.repeat(4)}</div>
+    <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-n="${n}">${n}</button>`).join('')}<button class="x" data-c="1">${onDone.cancel ? '取消' : ''}</button><button data-n="0">0</button><button class="x" data-b="1">刪除</button></div><p class="msg"></p>`;
+  document.body.appendChild(el);
+  let v = '';
+  const upd = () => el.querySelectorAll('.dots i').forEach((d, i) => d.classList.toggle('on', i < v.length));
+  el.addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.b) v = v.slice(0, -1); else if (b.dataset.c) { if (onDone.cancel) { el.remove(); onDone.cancel(); } return; } else if (v.length < 4) v += b.dataset.n;
+    upd();
+    if (v.length === 4) { const ok = await onDone(v); if (ok) el.remove(); else { el.classList.add('shake'); el.querySelector('.msg').textContent = ok === false ? '密碼不正確' : ''; setTimeout(() => el.classList.remove('shake'), 400); v = ''; upd(); } }
   });
+  return el;
 }
-function formReceive(r) {
-  openForm({
-    title: `收到：${r.name}`, note: `<p class="muted" style="margin-top:-6px">${money(num(r.amount))}</p>`,
-    data: { amount: r.amount, account_id: S.accounts[0]?.id || '' },
-    fields: [
-      { k: 'account_id', label: '存進哪個帳戶', type: 'select', options: [['', '（不存入帳戶，只標記已收到）'], ...S.accounts.map(a => [a.id, a.name])] },
-      { k: 'amount', label: '實際收到金額（台幣）', type: 'number', req: 1 },
-    ],
-    onSave: async v => {
-      const acc = S.accounts.find(a => a.id === v.account_id);
-      if (acc) {
-        const delta = fromTWD(v.amount, acc.currency), after = Math.round((num(acc.balance) + delta) * 100) / 100;
-        await upd('accounts', acc.id, { balance: after });
-        await add('balance_log', { account_id: acc.id, delta, balance_after: after, note: `收到 ${r.name}` });
-      }
-      await upd('receivables', r.id, { received_at: new Date().toISOString(), amount: v.amount, account_id: acc?.id || null });
-      toast('已標記收到' + (acc ? `，存入 ${acc.name}` : ''));
-    },
-  });
-}
-function formLiab(L, preset = {}) {
-  openForm({
-    title: L ? '編輯分期／負債' : '新增分期／負債', data: L || { kind: 'installment', ...preset },
-    note: '<p class="muted" style="margin-top:-6px;font-size:13px">每到「下次扣款日」，App 會自動把這期金額記到指定信用卡（跟著帳單扣款），或直接從指定帳戶扣除，並減少剩餘金額。</p>',
-    fields: [
-      { k: 'name', label: '項目', req: 1, ph: '例：線上英文課程' },
-      { k: 'kind', label: '類型', type: 'select', options: [['installment', '信用卡分期'], ['loan', '貸款'], ['other', '其他負債']] },
-      { k: 'monthly', label: '每期金額', type: 'number', hint: '留空 = 不自動入帳，只記錄剩餘金額' },
-      { k: 'periods_total', label: '總期數', type: 'number', ph: '例：12' },
-      { k: 'periods_left', label: '剩餘期數', type: 'number', ph: '例：9' },
-      { k: 'balance', label: '剩餘未繳金額', type: 'number', hint: '留空會用「每期金額 × 剩餘期數」計算' },
-      { k: 'next_date', label: '下次扣款日', type: 'date', hint: '之後每個月同一天自動入帳' },
-      { k: 'card_id', label: '掛在哪張信用卡', type: 'select', options: [['', '（不是信用卡分期）'], ...S.cards.map(c => [c.id, c.name])] },
-      { k: 'account_id', label: '或從哪個帳戶扣（非信用卡時）', type: 'select', options: [['', '（不自動扣）'], ...S.accounts.map(a => [a.id, a.name])] },
-      { k: 'note', label: '備註' },
-    ],
-    onSave: async v => {
-      const row = { ...v, card_id: v.card_id || null, account_id: v.card_id ? null : (v.account_id || null), next_date: v.next_date || null,
-        periods_total: v.periods_total ? Math.round(v.periods_total) : null, periods_left: v.periods_left != null ? Math.round(v.periods_left) : (v.periods_total ? Math.round(v.periods_total) : null) };
-      if (row.balance == null) row.balance = num(v.monthly) * (row.periods_left || 0);
-      if (L) await upd('liabilities', L.id, row); else await add('liabilities', row);
-      await runInstallments();
-    },
-    onDelete: L && (() => del('liabilities', L.id)),
-  });
-}
-function allocationPanel(t) {
-  const parts = [['流動資金', t.bank, 'var(--c-bank)'], ['台股', t.stock, 'var(--c-stock)'], ['加密貨幣', t.crypto, 'var(--c-crypto)'], ['應收款', t.recv, 'var(--c-recv)']].filter(p => p[1] > 0);
-  const assets = sum(parts, p => p[1]);
-  if (assets <= 0) return '';
-  const debts = t.debt + t.liab;
-  const ratio = debts / assets * 100;
-  return `<h2>資產分配</h2><section class="panel">
-    <div class="alloc">${parts.map(([n, v, c]) => `<div style="flex:${v};--c:${c}"><b>${Math.round(v / assets * 100)}%</b><span>${n}</span></div>`).join('')}</div>
-    <div class="debt-line"><span>負債比</span><div class="meter"><i style="width:${Math.min(100, ratio).toFixed(1)}%;background:var(--c-debt)"></i></div><b class="${ratio > 50 ? 'neg' : ''}">${ratio.toFixed(1)}%</b></div>
-    <div class="meta">負債 ${money(debts)}（未扣卡費 ${money(t.debt)}${t.liab ? `、分期／貸款 ${money(t.liab)}` : ''}）÷ 資產 ${money(assets)}</div>
-  </section>`;
+function lockScreen() { return new Promise(res => pinPad('輸入密碼', async v => { if (await sha(v) === SET.pin) { res(); return true; } return false; })); }
+function setPinFlow() {
+  if (SET.pin) { pinPad('輸入目前密碼以關閉', Object.assign(async v => { if (await sha(v) !== SET.pin) return false; SET.pin = null; saveSet(); render(); toast('已關閉密碼鎖'); return true; }, { cancel: () => { } })); return; }
+  let first = null;
+  pinPad('設定 4 位數密碼', Object.assign(async v => {
+    if (!first) { first = v; document.querySelector('.lock .t').textContent = '再輸入一次'; return null; }
+    if (v !== first) { first = null; document.querySelector('.lock .t').textContent = '兩次不一樣，請重新設定'; return false; }
+    SET.pin = await sha(v); saveSet(); render(); toast('已開啟密碼鎖，下次打開月汐要輸入'); return true;
+  }, { cancel: () => { } }));
 }
 
-/* ---------------- themes ---------------- */
-const THEMES = [
-  ['champagne', '奶油白・香檳金', ['#fcfaf5', '#d29b3c', '#2c2a35']],
-  ['mist', '米白・霧藍', ['#f8f7f3', '#4f7fd6', '#e0a63e']],
-  ['oat', '燕麥奶茶', ['#f4ece1', '#c97a3d', '#3a2b21']],
-  ['forest', '米白・墨綠金', ['#f8f6ef', '#1f7a5a', '#d4a13e']],
-];
-function applyTheme(t) {
-  const th = THEMES.find(x => x[0] === t) || THEMES[0];
-  document.documentElement.dataset.theme = th[0];
-  try { localStorage.setItem('ac_theme', th[0]); } catch (_) { }
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', th[2][0]);
-}
-
-/* ---------------- views ---------------- */
-const VIEWS = {};
-
-function txnRow(t) {
-  const c = S.cards.find(x => x.id === t.card_id);
-  const foreign = t.currency && t.currency !== 'TWD';
-  return `<div class="row click" data-act="edit-txn" data-id="${t.id}">
-    <div class="grow"><div class="title">${esc(t.merchant || '（未填商家）')}</div>
-      <div class="meta">${new Date(t.txn_at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${c ? esc(c.name) : `<span class="warn">${esc(t.card_label || '未對應卡片')}</span>`}
-      ${t.source === 'shortcut' ? ' · <span class="chip">捷徑</span>' : ''}${t.settled_cycle ? ' · <span class="chip">已扣款</span>' : ''}</div></div>
-    <div class="right"><div class="num">${money(billAmt(t))}</div>${foreign ? `<div class="meta num">${money(num(t.amount), t.currency)}</div>` : ''}${num(t.fee) ? `<div class="meta">含手續費 ${money(num(t.fee))}</div>` : ''}${rewOf(t.id) > 0.05 ? `<div class="meta rew">回饋 ${money(rewOf(t.id), 'TWD', rewOf(t.id) < 10 ? 1 : 0)}</div>` : ''}</div></div>`;
-}
-
-VIEWS.bank = () => {
-  const rows = S.accounts.map(a => {
-    const twd = toTWD(num(a.balance), a.currency);
-    return `<div class="row click" data-act="edit-acc" data-id="${a.id}">
-      <div class="grow"><div class="title">${esc(a.name)}</div><div class="meta">${esc(a.bank || '')} ${a.currency !== 'TWD' ? `<span class="chip">${esc(a.currency)}</span>` : ''}</div></div>
-      <div class="right"><div class="num">${money(num(a.balance), a.currency)}</div>${a.currency !== 'TWD' ? `<div class="meta num">≈ ${money(twd)}</div>` : ''}
-      <button class="btn small" data-act="adjust-acc" data-id="${a.id}" style="margin-top:6px">調整</button></div></div>`;
-  }).join('');
-  const logs = S.balance_log.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 15).map(l => {
-    const a = S.accounts.find(x => x.id === l.account_id);
-    return `<div class="row"><div class="grow"><div class="title">${esc(l.note || '餘額調整')}</div><div class="meta">${new Date(l.created_at).toLocaleDateString('zh-TW')} · ${esc(a?.name || '')}</div></div>
-      <div class="right num ${num(l.delta) < 0 ? 'neg' : 'pos'}">${num(l.delta) > 0 ? '+' : ''}${money(num(l.delta), a?.currency)}</div></div>`;
-  }).join('');
-  return `${S.missingTables.length ? `<div class="banner warn">應收款／負債的資料表還沒建立：請到 Supabase 的 SQL Editor 執行 README 裡「應收款與負債」那段 SQL。</div>` : ''}
-    <h2>銀行帳戶 <button class="btn small" data-act="transfer">⇄ 轉帳</button><button class="btn small" data-act="add-acc">＋ 新增帳戶</button></h2>
-    <section class="panel">${rows || '<div class="empty">新增你的第一個帳戶（台幣、外幣帳戶都可以）</div>'}</section>
-    ${recvSection()}
-    ${liabSection()}
-    <h2>異動紀錄</h2><section class="panel">${logs || '<div class="empty">信用卡自動扣款、手動調整都會記在這裡</div>'}</section>`;
-};
-
-VIEWS.stocks = () => {
-  const rows = stockRows();
-  const total = sum(rows, r => r.value), cost = sum(rows, r => r.costTotal);
-  const pl = sum(rows.filter(r => r.pl != null), r => r.pl);
-  const body = rows.map(r => `<tr class="click" data-act="open-stock" data-code="${esc(r.code)}">
-      <td><b>${esc(r.code)}</b> <span class="muted">${esc(r.name)}</span><div class="faint" style="font-size:11.5px">${qtyFmt(r.shares)} 股・均價 ${r.avg_cost ? (Math.round(r.avg_cost * 100) / 100).toLocaleString('zh-TW') : '—'}${r.lots.length > 1 ? `・${r.lots.length} 筆` : ''}</div></td>
-      <td>${r.price != null ? r.price.toLocaleString('zh-TW') : '<span class="faint">—</span>'}<div class="${r.day > 0 ? 'pos' : r.day < 0 ? 'neg' : 'faint'}" style="font-size:11.5px">${r.day != null ? pctFmt(r.day) : ''}</div></td>
-      <td>${money(r.value)}</td>
-      <td class="${r.pl > 0 ? 'pos' : r.pl < 0 ? 'neg' : ''}">${r.pl != null ? money(r.pl) : '—'}<div style="font-size:11.5px">${r.plPct != null ? pctFmt(r.plPct) : ''}</div></td>
-    </tr>`).join('');
-  return `<h2>台股 <button class="btn small" data-act="add-stock">＋ 記一筆買進</button></h2>
-    ${!CLOUD ? '<div class="banner warn">本機試用模式抓不到台股報價（需要 Supabase 的 tw-quote 函式），目前用成本價計算。</div>' : ''}
-    <section class="panel hero" style="padding:16px 18px">
-      <div class="label">台股市值</div><div class="big" style="font-size:28px">${money(total)}</div>
-      <div class="sub"><span>成本 <b class="num">${money(cost)}</b></span><span>未實現損益 <b class="num ${pl >= 0 ? 'pos' : 'neg'}">${money(pl)}</b></span></div>
-    </section>
-    <section class="panel scroll-x" style="margin-top:10px">${rows.length ? `<table class="t"><thead><tr><th>股票</th><th>現價</th><th>市值</th><th>損益</th></tr></thead><tbody>${body}</tbody></table>` : '<div class="empty">每次買進記一筆，同一檔股票會自動合併計算股數與均價</div>'}</section>
-    <p class="faint" style="font-size:12px">盤中為證交所即時資訊（約延遲數秒到 20 秒），抓不到時改用最近收盤價。</p>`;
-};
-
-VIEWS.crypto = () => {
-  const rows = cryptoRows();
-  const total = sum(rows, r => r.value || 0);
-  const assetRows = rows.map(r => `<div class="row">
-      <div class="grow"><div class="title">${esc(r.symbol)} <span class="muted num" style="font-weight:400">${qtyFmt(r.qty)}</span></div><div class="meta">${esc(r.where.join('、'))}</div></div>
-      <div class="right"><div class="num">${r.value != null ? money(r.value) : '<span class="faint">無報價</span>'}</div><div class="meta num ${r.chg > 0 ? 'pos' : r.chg < 0 ? 'neg' : ''}">${r.chg != null ? '24h ' + pctFmt(r.chg) : ''}</div></div></div>`).join('');
-  const hold = S.crypto_holdings.slice().sort((a, b) => (a.venue || '').localeCompare(b.venue || '')).map(h => `<div class="row click" data-act="edit-hold" data-id="${h.id}">
-      <div class="grow"><div class="title">${esc(h.symbol.toUpperCase())}</div><div class="meta">${esc(h.venue || '')}${h.cg_id ? '' : ' · <span class="warn">找不到報價代號</span>'}</div></div>
-      <div class="right num">${qtyFmt(num(h.qty))}</div></div>`).join('');
-  const wal = S.wallets.map(w => {
-    const b = S.walletBal[w.id];
-    const v = sum(b?.items || [], i => (S.prices[i.cg]?.twd || 0) * i.qty);
-    return `<div class="row click" data-act="edit-wallet" data-id="${w.id}">
-      <div class="grow"><div class="title">${esc(w.label || '錢包')} <span class="chip">${w.chain === 'btc' ? 'Bitcoin' : 'EVM 多鏈'}</span></div>
-        <div class="meta mono">${esc(w.address.slice(0, 8))}…${esc(w.address.slice(-6))}${b ? ' · ' + (b.err ? '<span class="warn">讀取失敗</span>' : (b.items.map(i => `${esc(i.symbol)}@${esc(i.chain)}`).join('、') || '無餘額')) : ' · 讀取中'}</div></div>
-      <div class="right num">${money(v)}</div></div>`;
-  }).join('');
-  return `<section class="panel hero" style="padding:16px 18px">
-      <div class="label">加密貨幣總值</div><div class="big" style="font-size:28px">${money(total)}</div>
-      <div class="sub"><span>報價：CoinGecko（新台幣）</span></div></section>
-    <h2>依幣種</h2><section class="panel">${assetRows || '<div class="empty">新增交易所持倉或錢包地址</div>'}</section>
-    <h2>交易所／手動持倉 <button class="btn small" data-act="add-hold">＋ 新增</button></h2>
-    <section class="panel">${hold || '<div class="empty">Binance、BitoPro、MAX 等交易所的持倉數量填在這裡</div>'}</section>
-    <h2>鏈上錢包 <button class="btn small" data-act="add-wallet">＋ 新增地址</button></h2>
-    <section class="panel">${wal || '<div class="empty">貼上 MetaMask／Binance Wallet 的公開地址，自動讀 ETH、BNB、Arbitrum、Base、Polygon 的原生幣與 USDT／USDC</div>'}</section>
-    <p class="faint" style="font-size:12px">只需要公開地址（0x… 或 bc1…），永遠不要在任何網頁輸入助記詞或私鑰。</p>`;
-};
-
-/* ---- 羅盤：本月刻度盤 ---- */
-const DEG = Math.PI / 180;
-const polar = (r, a) => [r * Math.cos(a * DEG), r * Math.sin(a * DEG)];
-const f1 = n => n.toFixed(1);
-function arcPath(r, a0, a1) {
-  const [x0, y0] = polar(r, a0), [x1, y1] = polar(r, a1);
-  return `M${f1(x0)} ${f1(y0)} A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${f1(x1)} ${f1(y1)}`;
-}
-const STAR = 'M0 -7 L1.8 -1.8 L7 0 L1.8 1.8 L0 7 L-1.8 1.8 L-7 0 L-1.8 -1.8Z';
-const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-function compassSVG(t) {
-  const now = new Date();
-  const N = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const dayAng = d => (d - 1) / N * 360 - 90;
-  const todayAng = dayAng(now.getDate() + (now.getHours() * 60 + now.getMinutes()) / 1440);
-  let ticks = '', labels = '';
-  for (let d = 1; d <= N; d++) {
-    const a = dayAng(d), major = d === 1 || d % 5 === 0;
-    const [x0, y0] = polar(major ? 138 : 143, a), [x1, y1] = polar(149, a);
-    ticks += `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" class="tk${major ? ' major' : ''}"/>`;
-    if (major) { const [lx, ly] = polar(126, a); labels += `<text x="${f1(lx)}" y="${f1(ly)}" class="dial-num">${d}</text>`; }
-  }
-  const perDay = {};
-  const stars = S.cards.map(c => {
-    const d = Math.min(+(c.due_day || c.closing_day), N), k = perDay[d] = (perDay[d] || 0) + 1;
-    const [x, y] = polar(158 + (k - 1) * 13, dayAng(d));
-    return `<path transform="translate(${f1(x)} ${f1(y)})" d="${STAR}" fill="${esc(c.color || '#b8893a')}" class="card-star"><title>${esc(c.name)}：每月 ${d} 日扣款</title></path>`;
-  }).join('');
-  const closeDays = [...new Set(S.cards.filter(c => !sameDayDebit(c)).map(c => Math.min(+c.closing_day, N)))];
-  const closes = closeDays.map(d => { const [x, y] = polar(158, dayAng(d)); return `<circle cx="${f1(x)}" cy="${f1(y)}" r="3.6" class="close-mark"><title>${d} 日結帳</title></circle>`; }).join('');
-  const assets = t.bank + t.stock + t.crypto + t.recv;
-  let ring = '';
-  if (assets > 0) {
-    let a = -90; const gap = 2.4;
-    for (const [v, cls] of [[t.bank, 'c-bank'], [t.stock, 'c-stock'], [t.crypto, 'c-crypto'], [t.recv, 'c-recv']]) {
-      if (v <= 0) continue;
-      const sweep = v / assets * 360;
-      if (sweep >= 359.9) ring += `<circle r="108" class="seg ${cls}"/>`;
-      else if (sweep > gap + .5) ring += `<path d="${arcPath(108, a + gap / 2, a + sweep - gap / 2)}" class="seg ${cls}"/>`;
-      a += sweep;
-    }
-  } else ring = '<circle r="108" class="seg-empty"/>';
-  const dSweep = assets > 0 ? Math.min(359, (t.debt + t.liab) / assets * 360) : 0;
-  const debt = dSweep > .5 ? `<path d="${arcPath(98, -90, -90 + dSweep)}" class="seg c-debt thin"/>` : '';
-  const val = money(t.net);
-  const fs = val.length > 13 ? 22 : val.length > 11 ? 26 : 31;
-  const na = todayAng + 90;
-  const anim = !S.swept && !reduceMotion()
-    ? `<animateTransform attributeName="transform" type="rotate" from="${f1(na - 150)}" to="${f1(na)}" dur="1.6s" calcMode="spline" keyTimes="0;1" keySplines=".16 .9 .3 1" fill="freeze"/>` : '';
-  S.swept = true;
-  return `<svg class="compass" viewBox="-180 -180 360 360" role="img" aria-label="本月羅盤：外圈是日期，星號是信用卡扣款日，空心圓是結帳日，指針是今天">
-    <circle r="170" class="halo"/><circle r="150" class="rim"/><circle r="117" class="rim inner"/>
-    ${ticks}${labels}${ring}${debt}
-    <g class="needle" transform="rotate(${f1(na)})">${anim}
-      <line y1="-84" y2="-62" class="needle-tail"/><path d="M0 -146 L4.5 -100 L0 -86 L-4.5 -100Z" class="needle-head"/></g>
-    ${closes}${stars}
-    <text y="-34" class="c-label">淨資產</text>
-    <text y="${Math.round(fs / 3) + 2}" class="c-value" style="font-size:${fs}px">${esc(val)}</text>
-    <text y="40" class="c-sub">${now.getMonth() + 1} 月 ${now.getDate()} 日</text>
-  </svg>`;
-}
-
-VIEWS.overview = () => {
-  const t = totals();
-  const snaps = S.snapshots.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(-90);
-  let spark = '';
-  if (snaps.length > 1) {
-    const vals = snaps.map(s => num(s.net)); const mn = Math.min(...vals), mx = Math.max(...vals), rng = mx - mn || 1;
-    const pts = vals.map((v, i) => `${(i / (vals.length - 1) * 300).toFixed(1)},${(30 - (v - mn) / rng * 26).toFixed(1)}`).join(' ');
-    const delta = vals.at(-1) - vals[0];
-    spark = `<div class="trend"><svg viewBox="0 0 300 32" preserveAspectRatio="none"><polyline points="${pts}"/></svg>
-      <span>${snaps.length} 天來 <b class="${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : ''}${money(delta)}</b></span></div>`;
-  }
-  const proj = {}; S.accounts.forEach(a => proj[a.id] = num(a.balance));
-  const upcoming = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
-  const upRows = upcoming.map(({ c, st }) => {
-    const acc = S.accounts.find(a => a.id === c.debit_account_id);
-    const n = st.next;
-    let after = null;
-    if (acc) { proj[acc.id] -= fromTWD(n.amount, acc.currency); after = proj[acc.id]; }
-    const when = n.days === 0 ? '<span class="warn">今天扣款</span>' : `${n.days} 天後扣款`;
-    const status = n.final ? '帳單已出' : `累計中，${n.closeDays === 0 ? '今天' : n.closeDays + ' 天後'}結帳`;
-    return `<div class="row click" data-act="open-card" data-id="${c.id}">
-      <div class="date-glyph" style="--cc:${esc(c.color || '#b8893a')}"><b>${n.date.getDate()}</b><small>${n.date.getMonth() + 1} 月</small></div>
-      <div class="grow"><div class="title">${esc(c.name)}</div>
-        <div class="meta one">${when}・${status}</div></div>
-      <div class="right"><div class="amt${n.final ? '' : ' soft'}">${money(n.amount)}</div>
-        ${acc ? `<div class="meta ${after < 0 ? 'neg' : ''}">扣後剩 ${money(after, acc.currency)}</div>` : '<div class="meta warn">未設扣款帳戶</div>'}</div></div>`;
-  }).join('');
-  const recent = S.transactions.slice().sort((a, b) => b.txn_at.localeCompare(a.txn_at)).slice(0, 5);
-  const leg = (cls, name, v) => `<div><i class="${cls}"></i><span>${name}</span><b>${money(v)}</b></div>`;
-  return `
-  <section class="dial">${compassSVG(t)}
-    <div class="dial-legend">${leg('c-bank', '銀行', t.bank)}${leg('c-stock', '台股', t.stock)}${leg('c-crypto', '加密貨幣', t.crypto)}${t.recv ? leg('c-recv', '應收款', t.recv) : ''}${leg('c-debt', '未扣卡費', -t.debt)}${t.liab ? leg('c-liab', '分期／負債', -t.liab) : ''}</div>
-    ${spark}
-  </section>
-  ${S.cards.some(c => (c.rewards || []).length) ? `<button class="rew-strip" data-act="recommend"><span>本期預估回饋</span><b>${money(sum(S.cards, c => cycleReward(c, cardState(c).open.end).total))}</b><small>刷哪張最划算 ›</small></button>` : ''}
-  ${allocationPanel(t)}
-  <h2>接下來的扣款</h2>
-  <section class="panel">${upRows || ((CFG.presetCards || []).length ? `<button class="empty-cta" data-act="preset-cards">加入我的 ${CFG.presetCards.length} 張信用卡</button>` : '<button class="empty-cta" data-act="add-card">新增第一張信用卡，扣款日會出現在羅盤外圈</button>')}</section>
-  <h2>最近刷卡</h2>
-  <section class="panel">${recent.map(txnRow).join('') || '<button class="empty-cta" data-act="add-txn">記下第一筆刷卡</button>'}</section>`;
-};
-
-/* ---- 信用卡：卡面輪播 ---- */
-function seedRand(str) {
-  let h = 2166136261;
-  for (const ch of String(str)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
-  return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 10000) / 10000; };
-}
-function constellation(id) {
-  const r = seedRand(id);
-  const pts = Array.from({ length: 6 }, (_, i) => [135 + i * 28 + r() * 16, 70 + r() * 80]);
-  const line = pts.map(p => p.map(f1).join(',')).join(' ');
-  const dots = pts.map(([x, y], i) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="${i % 3 === 0 ? 2.4 : 1.5}"/>`).join('');
-  return `<svg class="cc-sky" viewBox="0 0 320 200" aria-hidden="true"><polyline points="${line}"/>${dots}</svg>`;
-}
-function cardFace(c, i) {
-  const st = cardState(c), n = st.next;
-  return `<div class="cc" style="--cc:${esc(c.color || '#c9a96e')}">
-    ${constellation(c.id)}
-    <span class="cc-top"><span class="cc-name">${esc(c.name)}</span><svg class="cc-chip" viewBox="0 0 34 26" aria-hidden="true"><rect x=".5" y=".5" width="33" height="25" rx="5"/><path d="M0 9h11M0 17h11M23 9h11M23 17h11M11 0v26M23 0v26"/></svg></span>
-    <span class="cc-mid"><small>${n.final ? `${md(st.billed.end)} 帳單・${md(ymd(n.date))} 扣款` : '本期累計'}</small><b>${money(n.final ? st.billed.total : st.open.total)}</b>${(c.rewards || []).length ? `<em class="cc-rew">本期回饋約 ${money(cycleReward(c, st.open.end).total)}</em>` : ''}</span>
-    <span class="cc-bot"><span>${sameDayDebit(c) ? `每月 ${c.closing_day} 日結帳並扣款` : `${c.closing_day} 日結帳・${c.due_day} 日扣款`}</span><span class="${n.days === 0 ? 'warn' : ''}">${n.days === 0 ? '今天扣款' : n.days + ' 天後扣款'}</span></span>
-  </div>`;
-}
-function cardDetail(c) {
-  if (!c) return '';
-  const st = cardState(c), cy = st.open, bl = st.billed;
-  const acc = S.accounts.find(a => a.id === c.debit_account_id);
-  const debt = sum(unsettled(c.id), billAmt);
-  const lim = num(c.credit_limit);
-  const hist = S.settlements.filter(s => s.card_id === c.id).sort((a, b) => String(b.cycle_end).localeCompare(String(a.cycle_end))).slice(0, 4);
-  return `<section class="panel">
-    <div class="cycle">
-      <div><small>本期區間</small><b>${md(cy.start)}–${md(cy.end)}</b></div>
-      <div><small>扣款帳戶</small><b class="small">${acc ? esc(acc.name) : '<span class="warn">未設定</span>'}</b></div>
-    </div>
-    ${bl ? `<div class="bill"><div><small>${md(bl.end)} 已出帳單</small><b>${money(bl.total)}</b></div><div class="r"><small>自動扣款</small><b>${md(ymd(bl.due))}</b></div></div>
-      <button class="btn small paid-btn" data-act="paid-bill" data-id="${c.id}">這期已經繳了</button>` : ''}
-    <div class="meta" style="margin-top:10px">本期累計 ${money(cy.total)}，${md(cy.end)} 結帳後於 ${md(ymd(cy.due))} 扣款</div>
-    ${lim ? `<div class="meta" style="margin-top:12px">額度已用 ${money(debt)}，上限 ${money(lim)}</div><div class="meter"><i style="width:${Math.min(100, debt / lim * 100).toFixed(1)}%${debt / lim > .8 ? ';background:var(--danger)' : ''}"></i></div>` : ''}
-    <div class="actions"><button class="btn primary" data-act="add-txn" data-card="${c.id}">記一筆消費</button><button class="btn" data-act="edit-card" data-id="${c.id}">卡片設定</button></div>
-  </section>
-  ${rewardPanel(c, st)}
-  ${bl ? `<h2>${md(bl.end)} 帳單明細</h2><section class="panel">${bl.items.map(txnRow).join('')}</section>` : ''}
-  <h2>本期消費</h2>
-  <section class="panel">${cy.items.map(txnRow).join('') || '<div class="empty">本期還沒有消費</div>'}</section>
-  ${hist.length ? `<h2>扣款紀錄</h2><section class="panel">${hist.map(h => `<div class="row"><div class="grow"><div class="title">${md(ymd(dueFor(c, String(h.cycle_end).slice(0, 10))))} 扣款</div><div class="meta">${md(h.cycle_end)} 帳單</div></div><div class="right amt">${money(num(h.amount))}</div></div>`).join('')}</section>` : ''}`;
-}
-function cardTile(c) {
-  const st = cardState(c), n = st.next;
-  const start = parseYmd(st.open.start), end = parseYmd(st.open.end);
-  const prog = Math.min(100, Math.max(0, (todayDate() - start) / (end - start + 864e5) * 100));
-  const rew = (c.rewards || []).length ? cycleReward(c, st.open.end).total : 0;
-  return `<button class="ctile" style="--cc:${esc(c.color || '#b8893a')}" data-act="open-card" data-id="${c.id}">
-    <span class="ct-edge"></span>
-    <span class="ct-main">
-      <span class="ct-name">${esc(c.name)}</span>
-      <span class="ct-sub">${n.final ? `${md(st.billed.end)} 帳單已出` : `本期累計中・${n.closeDays === 0 ? '今天' : n.closeDays + ' 天後'}結帳`}${rew ? `・回饋約 ${money(rew)}` : ''}</span>
-      <span class="ct-bar"><i style="width:${prog.toFixed(1)}%"></i></span>
-    </span>
-    <span class="ct-right">
-      <b>${money(n.amount)}</b>
-      <span class="${n.days <= 3 ? 'warn' : ''}">${n.days === 0 ? '今天扣款' : `${md(ymd(n.date))} 扣款`}</span>
-    </span>
-  </button>`;
-}
-VIEWS.cards = () => {
-  const orphan = S.transactions.filter(t => !t.card_id && !t.settled_cycle);
-  const banner = orphan.length ? `<div class="banner warn">有 ${orphan.length} 筆紀錄對不到卡片。點開指定卡片，再到卡片設定補上「Apple 錢包裡的卡片名稱」。</div><section class="panel" style="margin-bottom:14px">${orphan.map(txnRow).join('')}</section>` : '';
-  if (!S.cards.length) {
-    const preset = (CFG.presetCards || []).length;
-    return `${banner}<button class="cc cc-add" style="width:100%" data-act="${preset ? 'preset-cards' : 'add-card'}"><span class="plus">✦</span>${preset ? `加入我的 ${CFG.presetCards.length} 張信用卡` : '新增信用卡'}<small>${preset ? CFG.presetCards.map(p => esc(p.name)).join('、') : '設定結帳日、扣款日與扣款帳戶'}</small></button>`;
-  }
-  const open = S.cards.find(c => c.id === S.cardOpen);
-  if (open) {
-    const i = S.cards.indexOf(open);
-    return `<div class="cd-nav"><button class="btn small ghost" data-act="cards-home">← 所有卡片</button>
-        <span>${S.cards.length > 1 ? `<button class="icon-btn" data-act="card-step" data-d="-1" aria-label="上一張">‹</button><button class="icon-btn" data-act="card-step" data-d="1" aria-label="下一張">›</button>` : ''}</span></div>
-      <div class="cd-face">${cardFace(open, i)}</div>
-      ${cardDetail(open)}`;
-  }
-  const states = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
-  const due30 = states.filter(x => x.st.next.days <= 31);
-  const next = states[0];
-  return `${banner}
-    <section class="due-sum">
-      <div><small>接下來要繳</small><b>${money(sum(due30, x => x.st.next.amount))}</b></div>
-      <div class="r"><small>最近一筆</small><b>${md(ymd(next.st.next.date))}</b><span>${esc(next.c.name)}</span></div>
-    </section>
-    <div class="ctiles">${states.map(x => cardTile(x.c)).join('')}</div>
-    <div class="actions" style="margin-top:12px"><button class="btn" data-act="recommend">這筆刷哪張最划算？</button><button class="btn" data-act="import-txn">匯入帳單明細</button><button class="btn ghost" data-act="add-card">＋ 新增信用卡</button></div>`;
-};
-
-/* ---- 投資：台股＋加密 ---- */
-VIEWS.invest = () => {
-  const sub = S.invSub === 'crypto' ? 'crypto' : 'stocks';
-  return `<div class="seg-ctl" role="tablist">
-      <button role="tab" data-act="inv" data-sub="stocks" class="${sub === 'stocks' ? 'on' : ''}">台股</button>
-      <button role="tab" data-act="inv" data-sub="crypto" class="${sub === 'crypto' ? 'on' : ''}">加密貨幣</button></div>
-    ${VIEWS[sub]()}`;
-};
-
-/* ---- 快速記帳 ---- */
-function openFab() {
-  const m = $('#modal');
-  m.innerHTML = `<div class="sheet"><h3>要記什麼？</h3><div class="fab-grid">
-    <button data-act="recommend" class="wide"><b>這筆刷哪張？</b><small>依各卡回饋與剩餘上限，算出最划算的卡</small></button>
-    <button data-act="import-txn" class="wide"><b>匯入帳單明細</b><small>選 Claude 整理好的 CSV 檔，一次建好多筆刷卡紀錄</small></button>
-    <button data-act="add-txn"><b>刷卡消費</b><small>實體卡、網購等捷徑抓不到的</small></button>
-    <button data-act="fab-acc"><b>帳戶存提</b><small>薪水入帳、支出、對帳</small></button>
-    <button data-act="transfer"><b>帳戶轉帳</b><small>帳戶之間互轉、換匯</small></button>
-    <button data-act="add-stock"><b>台股買進</b><small>每次買進記一筆，自動合併均價</small></button>
-    <button data-act="add-hold"><b>加密持倉</b><small>交易所的幣種數量</small></button>
-    <button data-act="add-recv"><b>應收款</b><small>別人欠你、待入帳的錢</small></button>
-    <button data-act="add-liab"><b>分期／負債</b><small>信用卡分期、貸款，每月自動入帳</small></button>
-  </div></div>`;
-  m.hidden = false;
-  m.onclick = e => { if (e.target === m) { m.hidden = true; m.innerHTML = ''; } };
-}
-
-VIEWS.settings = () => {
-  const ingestUrl = CLOUD ? `${CFG.supabaseUrl}/functions/v1/shortcut-ingest` : '';
-  const appUrl = location.href.split('#')[0];
-  const cur = document.documentElement.dataset.theme || 'champagne';
-  const themes = THEMES.map(([k, name, c]) => `<button data-act="theme" data-theme="${k}" class="${k === cur ? 'on' : ''}" aria-pressed="${k === cur}">
-      <span class="sw">${c.map(x => `<i style="background:${x}"></i>`).join('')}</span><span>${name}</span></button>`).join('');
-  return `<h2>主題設定</h2><section class="panel">${themeTiles()}</section>
-  ${(CFG.presetCards || []).some(p => !S.cards.some(c => c.name === p.name)) ? `<h2>預設信用卡</h2><section class="panel"><p class="meta" style="margin-top:0">還有 ${CFG.presetCards.filter(p => !S.cards.some(c => c.name === p.name)).map(p => esc(p.name)).join('、')} 沒有建立</p><button class="btn small primary" data-act="preset-cards">補建這些卡片</button></section>` : ''}
-  <h2>帳號與模式</h2>
-  <section class="panel">
-    ${CLOUD ? `<div class="row"><div class="grow"><div class="title">雲端同步</div><div class="meta">${esc(user?.email || '')}</div></div><button class="btn small" data-act="signout">登出</button></div>`
-      : `<div class="banner warn">目前是本機試用模式：資料只存在這個瀏覽器。照 README 設定 Supabase 後即可手機電腦同步、讓捷徑直接寫入。</div>
-         <div class="actions"><button class="btn small" data-act="seed">載入範例資料</button></div>`}
-  </section>
-  <h2>iOS 捷徑：刷卡自動記帳</h2>
-  <section class="panel">
-    ${CLOUD ? `<p class="muted" style="margin-top:0;font-size:13.5px">捷徑會把 Apple Pay 交易送到這個網址（完整步驟見 README）：</p>
-      <code class="codebox">${esc(ingestUrl)}</code>
-      <p class="muted" style="font-size:13.5px">標頭 <code>x-ingest-token</code> 的值：</p>
-      <code class="codebox" id="tokenBox">${esc(S.token || '尚未產生')}</code>
-      <div class="actions"><button class="btn small primary" data-act="gen-token">${S.token ? '重新產生金鑰' : '產生金鑰'}</button>${S.token ? '<button class="btn small" data-act="copy-token">複製金鑰</button>' : ''}</div>
-      <p class="faint" style="font-size:12px">重新產生後，舊金鑰立刻失效，捷徑要換成新的。</p>`
-      : `<p class="muted" style="margin-top:0;font-size:13.5px">本機模式可用「打開網址」方式：捷徑打開下面網址，App 會自動帶入金額並跳出確認視窗。</p>
-      <code class="codebox">${esc(appUrl)}#add?amount=金額&merchant=商家&card=卡片</code>`}
-  </section>
-  <h2>匯入</h2>
-  <section class="panel"><p class="meta" style="margin-top:0">把信用卡帳單截圖給 Claude 整理成 CSV，再從這裡一次匯入。重複的紀錄會自動略過。</p>
-    <button class="btn small primary" data-act="import-txn">匯入刷卡紀錄</button></section>
-  <h2>備份</h2>
-  <section class="panel">
-    <div class="actions" style="margin-top:0"><button class="btn small" data-act="export">匯出 JSON 備份</button>
-    ${!CLOUD ? '<label class="btn small" style="margin:0;color:var(--text)">匯入備份<input type="file" accept="application/json" data-act="import" hidden></label>' : ''}</div>
-  </section>
-  <p class="faint" style="font-size:12px;text-align:center;margin-top:24px">版本 ${APP_VERSION}<br>匯率：open.er-api.com · 台股：證交所／櫃買中心 · 加密：CoinGecko、publicnode、mempool.space</p>`;
-};
-
-const EYE_OPEN = '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
-const EYE_SHUT = '<svg viewBox="0 0 24 24"><path d="M3 4l18 16M9.9 5.8A10 10 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-3.2 3.9M6.3 7.3A17 17 0 0 0 2 12s3.6 6.5 10 6.5a9.6 9.6 0 0 0 4-.9"/></svg>';
-function render() {
-  if (!VIEWS[S.tab]) S.tab = 'overview';
-  allRewards();
-  setTimeout(() => { if (S.tab === 'cards') applyCardFold(); }, 0);
-  $('#view').innerHTML = VIEWS[S.tab]();
-  document.querySelectorAll('.tabs [data-tab]').forEach(b => { const on = b.dataset.tab === S.tab; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); });
-  const eye = $('[data-act="toggle-hide"]'); eye.innerHTML = S.hide ? EYE_SHUT : EYE_OPEN; eye.setAttribute('aria-pressed', S.hide);
-}
-function go(tab) { S.tab = tab; localStorage.setItem('ac_tab', tab); render(); scrollTo(0, 0); }
-
-/* ---------------- forms ---------------- */
-function openForm({ title, fields, data = {}, onSave, onDelete, note = '' }) {
-  const m = $('#modal');
-  const fieldHtml = f => {
-    const v = data[f.k] ?? f.def ?? '';
-    const req = f.req ? 'required' : '';
-    let input;
-    if (f.type === 'select') input = `<select name="${f.k}" ${req}>${f.options.map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
-    else if (f.type === 'check') return `<label class="check"><input type="checkbox" name="${f.k}" ${v ? 'checked' : ''}> ${esc(f.label)}</label>`;
-    else input = `<input name="${f.k}" type="${f.type || 'text'}" value="${esc(v)}" ${f.type === 'number' ? 'step="any" inputmode="decimal"' : ''} ${f.ph ? `placeholder="${esc(f.ph)}"` : ''} ${req}>`;
-    return `<label>${esc(f.label)}${input}${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ''}</label>`;
-  };
-  m.innerHTML = `<form class="sheet"><h3>${esc(title)}</h3>${note}${fields.map(fieldHtml).join('')}
-    <div class="actions">${onDelete ? '<button type="button" class="btn danger" data-f="del">刪除</button>' : ''}
-    <button type="button" class="btn ghost" data-f="cancel">取消</button><button class="btn primary" type="submit">儲存</button></div></form>`;
-  m.hidden = false;
-  const form = $('form', m);
-  const close = () => { m.hidden = true; m.innerHTML = ''; };
-  m.onclick = e => { if (e.target === m) close(); };
-  $('[data-f="cancel"]', m).onclick = close;
-  if (onDelete) $('[data-f="del"]', m).onclick = async () => { if (confirm('確定刪除？')) { try { await onDelete(); close(); render(); } catch (err) { toast('刪除失敗：' + err.message); } } };
-  form.onsubmit = async e => {
-    e.preventDefault();
-    const out = {};
-    for (const f of fields) {
-      const el = form.elements[f.k];
-      out[f.k] = f.type === 'check' ? el.checked : f.type === 'number' ? (el.value === '' ? null : parseFloat(el.value)) : el.value.trim();
-    }
-    const btn = $('button[type=submit]', form); btn.disabled = true;
-    try { await onSave(out); close(); render(); }
-    catch (err) { btn.disabled = false; toast('儲存失敗：' + (err.message || err)); }
-  };
-  setTimeout(() => form.querySelector('input:not([type=checkbox]),select')?.focus(), 50);
-}
-
-const CURRENCIES = ['TWD', 'USD', 'JPY', 'EUR', 'CNY', 'HKD', 'KRW', 'GBP', 'AUD'].map(c => [c, c]);
-const accOptions = () => [['', '（不自動扣款）'], ...S.accounts.map(a => [a.id, `${a.name}${a.currency !== 'TWD' ? ' · ' + a.currency : ''}`])];
-const cardOptions = () => [['', '（未指定卡片）'], ...S.cards.map(c => [c.id, c.name])];
-const localDT = d => { const x = new Date(d); return `${ymd(x)}T${pad(x.getHours())}:${pad(x.getMinutes())}`; };
-
-function formAccount(a) {
-  openForm({
-    title: a ? '編輯帳戶' : '新增銀行帳戶', data: a || {},
-    fields: [
-      { k: 'name', label: '帳戶名稱', req: 1, ph: '例：永豐大戶 台幣' },
-      { k: 'bank', label: '銀行', ph: '例：永豐銀行' },
-      { k: 'currency', label: '幣別', type: 'select', options: CURRENCIES, def: 'TWD' },
-      ...(a ? [] : [{ k: 'balance', label: '目前餘額', type: 'number', def: 0 }]),
-      { k: 'note', label: '備註' },
-    ],
-    onSave: async v => { if (a) await upd('accounts', a.id, v); else await add('accounts', { ...v, balance: v.balance || 0 }); },
-    onDelete: a && (async () => {
-      if (S.cards.some(c => c.debit_account_id === a.id)) throw new Error('有信用卡用這個帳戶扣款，請先改掉卡片設定');
-      await del('accounts', a.id);
-    }),
-  });
-}
-function formAdjust(a0) {
-  openForm({
-    title: a0 ? `調整：${a0.name}` : '帳戶存提／對帳', note: a0 ? `<p class="muted" style="margin-top:-6px">目前 ${money(num(a0.balance), a0.currency)}</p>` : '',
-    fields: [
-      ...(a0 ? [] : [{ k: 'account_id', label: '帳戶', type: 'select', options: S.accounts.map(x => [x.id, `${x.name}（${money(num(x.balance), x.currency)}）`]) }]),
-      { k: 'mode', label: '方式', type: 'select', options: [['set', '對帳：設定為新的餘額'], ['in', '存入 / 收入'], ['out', '提出 / 支出']] },
-      { k: 'amount', label: '金額', type: 'number', req: 1 },
-      { k: 'note', label: '說明', ph: '例：薪水、房租、對帳' },
-    ],
-    onSave: async v => {
-      const a = a0 || S.accounts.find(x => x.id === v.account_id);
-      const cur = num(a.balance);
-      const after = v.mode === 'set' ? v.amount : v.mode === 'in' ? cur + v.amount : cur - v.amount;
-      const delta = Math.round((after - cur) * 100) / 100;
-      await upd('accounts', a.id, { balance: after });
-      await add('balance_log', { account_id: a.id, delta, balance_after: after, note: v.note || (v.mode === 'set' ? '對帳調整' : v.mode === 'in' ? '存入' : '支出') });
-    },
-  });
-}
-function formCard(c) {
-  openForm({
-    title: c ? '信用卡設定' : '新增信用卡', data: c || {},
-    note: '<p class="muted" style="margin-top:-6px;font-size:13px">扣款日當天開啟 App，會自動把那期帳單從扣款帳戶扣除。</p>',
-    fields: [
-      { k: 'name', label: '卡片名稱', req: 1, ph: '例：MaiCoin 聯名卡' },
-      { k: 'closing_day', label: '每月結帳日（1–31）', type: 'number', req: 1, hint: '小月沒有該日時，以月底計算' },
-      { k: 'due_day', label: '每月扣款日（1–31）', type: 'number', hint: '結帳後的下一個這一天扣款；留空 = 結帳日當天扣款' },
-      { k: 'debit_account_id', label: '扣款帳戶', type: 'select', options: accOptions() },
-      { k: 'wallet_name', label: 'Apple 錢包裡的卡片名稱', ph: '捷徑比對用，照錢包顯示的名字填', hint: '可只填一部分，例如「MaiCoin」' },
-      { k: 'credit_limit', label: '信用額度（選填）', type: 'number' },
-      { k: 'fx_fee', label: '國外交易手續費率（%）', type: 'number', def: 1.5, hint: '多數台灣信用卡是 1.5%；免手續費的卡填 0' },
-      { k: 'cycle_start', label: '改結帳日過渡期：本期從哪天開始（選填）', type: 'date', hint: '有申請改結帳日、這期特別長時才填，例如 9/10' },
-      { k: 'first_close', label: '改結帳日後第一次結帳日（選填）', type: 'date', hint: '例如 10/29；這天之前原本的結帳日會略過' },
-      { k: 'color', label: '代表色', type: 'select', options: [['#b8893a', '琥珀金'], ['#4f9a92', '青瓷'], ['#5b72c4', '霧藍'], ['#8a63b8', '薰紫'], ['#c0623f', '赭紅'], ['#5d6378', '石墨']] },
-    ],
-    onSave: async v => {
-      v.closing_day = Math.max(1, Math.min(31, Math.round(v.closing_day)));
-      v.due_day = v.due_day == null ? null : Math.max(1, Math.min(31, Math.round(v.due_day)));
-      v.cycle_start = v.cycle_start || null; v.first_close = v.first_close || null;
-      if ((v.cycle_start && !v.first_close) || (!v.cycle_start && v.first_close)) throw new Error('改結帳日的兩個日期要一起填');
-      v.debit_account_id = v.debit_account_id || null;
-      if (c) {
-        if (v.closing_day !== +c.closing_day || v.due_day !== (c.due_day == null ? null : +c.due_day)) v.last_settled = initialSettled(v);
-        await upd('cards', c.id, v);
-      } else await add('cards', { ...v, rewards: presetRewardsFor(v) || [], last_settled: initialSettled(v) });
-    },
-    onDelete: c && (async () => { await del('cards', c.id); S.transactions.forEach(t => { if (t.card_id === c.id) t.card_id = null; }); }),
-  });
-}
-function formTxn(t, preset = {}) {
-  const d = t || preset;
-  openForm({
-    title: t ? '編輯消費' : '記一筆刷卡', data: { ...d, overseas: d.fee != null ? num(d.fee) > 0 : (d.currency && d.currency !== 'TWD'), pay: d.pay || (t ? txnPay(t) : d.source === 'shortcut' ? 'applepay' : 'card'), txn_at: localDT(d.txn_at || Date.now()), settled: !!d.settled_cycle },
-    fields: [
-      { k: 'card_id', label: '信用卡', type: 'select', options: cardOptions() },
-      { k: 'merchant', label: '商家／用途' },
-      { k: 'amount', label: '金額（原幣，退款填負數）', type: 'number', req: 1 },
-      { k: 'currency', label: '幣別', type: 'select', options: CURRENCIES, def: 'TWD' },
-      { k: 'pay', label: '支付方式', type: 'select', options: PAY_OPTIONS, def: 'card', hint: '回饋計算會用到，例如 LINE Pay、日本 Apple Pay 加碼' },
-      { k: 'amount_twd', label: '台幣入帳金額（外幣可修正為帳單實際金額）', type: 'number', hint: '台幣交易留空即可；外幣留空會依即時匯率換算' },
-      { k: 'overseas', label: '海外交易（加收國外交易手續費）', type: 'check', hint: '外幣交易、或台幣計價但商家在國外（例如 Apple.com、Netflix、Agoda）都要勾' },
-      { k: 'txn_at', label: '時間（建議用入帳日）', type: 'datetime-local', req: 1 },
-      ...(t ? [{ k: 'settled', label: '已扣款（不再計入未來帳單）', type: 'check' }] : []),
-    ],
-    onSave: async v => {
-      const row = { card_id: v.card_id || null, merchant: v.merchant, amount: v.amount, currency: v.currency, pay: v.pay, txn_at: new Date(v.txn_at).toISOString() };
-      row.amount_twd = v.currency === 'TWD' ? v.amount : (v.amount_twd ?? Math.round(toTWD(v.amount, v.currency) * 100) / 100);
-      if (!Number.isFinite(row.amount_twd)) throw new Error('抓不到匯率，請手動填台幣金額');
-      const card = S.cards.find(c => c.id === row.card_id);
-      row.fee = v.overseas && !isFeeRow(row) ? Math.round(Math.abs(row.amount_twd) * feeRate(card) / 100) * Math.sign(row.amount_twd || 1) : 0;
-      if (t) {
-        if (v.settled && !t.settled_cycle) row.settled_cycle = 'manual';
-        if (!v.settled) row.settled_cycle = null;
-        await upd('transactions', t.id, row);
-      } else {
-        row.source = preset.source || 'manual'; row.card_label = preset.card_label || card?.name || '';
-        if (card?.last_settled && ymd(new Date(row.txn_at)) <= String(card.last_settled).slice(0, 10)) { row.settled_cycle = 'past'; toast('這筆落在已扣款的週期，標記為已扣款，不會重複扣'); }
-        await add('transactions', row);
-      }
-    },
-    onDelete: t && (() => del('transactions', t.id)),
-  });
-}
-function formStock(s, preset = {}) {
-  const d = s || preset;
-  openForm({
-    title: s ? '編輯這筆交易' : d.code ? `買進 ${d.code}` : '記一筆台股買進',
-    data: { ...d, bought: ymd(new Date(d.created_at || Date.now())) },
-    fields: [
-      { k: 'code', label: '股票代號', req: 1, ph: '例：2330、0050、00878' },
-      { k: 'name', label: '名稱（選填，會自動帶入）' },
-      { k: 'shares', label: '股數（1 張 = 1000 股，賣出填負數）', type: 'number', req: 1 },
-      { k: 'avg_cost', label: '成交價（每股，可把手續費攤進去）', type: 'number', hint: '賣出那筆可留空，不影響均價' },
-      { k: 'bought', label: '交易日期', type: 'date' },
-      { k: 'note', label: '備註', ph: '例：定期定額、除權息配股' },
-    ],
-    onSave: async v => {
-      const row = { code: v.code.toUpperCase(), name: v.name, shares: v.shares, avg_cost: v.avg_cost, note: v.note };
-      if (v.bought) { const t = parseYmd(v.bought); t.setHours(12); row.created_at = t.toISOString(); }
-      if (s) await upd('stocks', s.id, row); else await add('stocks', row);
-      await loadQuotes(true);
-    },
-    onDelete: s && (() => del('stocks', s.id)),
-  });
-}
-function openStock(code) {
-  const r = stockRows().find(x => x.code === code); if (!r) return;
-  const m = $('#modal');
-  const lots = r.lots.map(l => `<div class="row click" data-act="edit-stock" data-id="${l.id}">
-      <div class="grow"><div class="title">${num(l.shares) < 0 ? '賣出' : '買進'} ${qtyFmt(Math.abs(num(l.shares)))} 股</div>
-        <div class="meta">${new Date(l.created_at).toLocaleDateString('zh-TW')}${l.note ? '・' + esc(l.note) : ''}</div></div>
-      <div class="right"><div class="num">${l.avg_cost ? '@ ' + num(l.avg_cost).toLocaleString('zh-TW') : ''}</div>
-        <div class="meta num">${l.avg_cost ? money(num(l.shares) * num(l.avg_cost)) : ''}</div></div></div>`).join('');
-  m.innerHTML = `<div class="sheet"><h3>${esc(r.code)} ${esc(r.name)}</h3>
-    <div class="cycle">
-      <div><small>合計股數</small><b>${qtyFmt(r.shares)}</b></div>
-      <div><small>加權均價</small><b>${r.avg_cost ? (Math.round(r.avg_cost * 100) / 100).toLocaleString('zh-TW') : '—'}</b></div>
-      <div><small>市值</small><b>${money(r.value)}</b></div>
-      <div><small>未實現損益</small><b class="${r.pl > 0 ? 'pos' : r.pl < 0 ? 'neg' : ''}">${r.pl != null ? money(r.pl) : '—'}</b></div>
-    </div>
-    <h2>交易紀錄（${r.lots.length} 筆）</h2>
-    <div class="panel">${lots}</div>
-    <div class="actions">
-      ${r.lots.length > 1 ? `<button class="btn ghost" data-act="merge-stock" data-code="${esc(r.code)}">合併成一筆</button>` : ''}
-      <button class="btn primary" data-act="buy-stock" data-code="${esc(r.code)}">＋ 再買一筆</button></div></div>`;
-  m.hidden = false;
-  m.onclick = e => { if (e.target === m) { m.hidden = true; m.innerHTML = ''; } };
-}
-async function mergeStock(code) {
-  const r = stockRows().find(x => x.code === code); if (!r || r.lots.length < 2) return;
-  if (!confirm(`把 ${r.lots.length} 筆交易合併成一筆（${r.shares} 股、均價 ${Math.round(r.avg_cost * 100) / 100}）？合併後就看不到每筆明細了。`)) return;
-  const keep = r.lots[0];
-  await upd('stocks', keep.id, { shares: r.shares, avg_cost: Math.round(r.avg_cost * 10000) / 10000, note: `合併 ${r.lots.length} 筆`, name: r.name || keep.name });
-  for (const l of r.lots.slice(1)) await del('stocks', l.id);
-  toast('已合併');
-}
-function formHolding(h) {
-  openForm({
-    title: h ? '編輯持倉' : '新增加密貨幣持倉', data: h || {},
-    fields: [
-      { k: 'symbol', label: '幣種代號', req: 1, ph: '例：BTC、ETH、USDT' },
-      { k: 'qty', label: '數量', type: 'number', req: 1 },
-      { k: 'venue', label: '放在哪裡', ph: '例：Binance、BitoPro、MAX' },
-      { k: 'cg_id', label: 'CoinGecko 代號（選填）', hint: '留空會自動搜尋；同名幣很多時可到 coingecko.com 查 API id' },
-    ],
-    onSave: async v => {
-      v.symbol = v.symbol.toUpperCase();
-      if (!v.cg_id) v.cg_id = await findCgId(v.symbol);
-      if (!v.cg_id) toast('找不到這個幣的報價代號，可手動填 CoinGecko id');
-      if (h) await upd('crypto_holdings', h.id, v); else await add('crypto_holdings', v);
-      await loadPrices(true);
-    },
-    onDelete: h && (() => del('crypto_holdings', h.id)),
-  });
-}
-function formWallet(w) {
-  openForm({
-    title: w ? '編輯錢包' : '新增錢包地址', data: w || {},
-    fields: [
-      { k: 'label', label: '名稱', ph: '例：MetaMask 主錢包' },
-      { k: 'chain', label: '類型', type: 'select', options: [['evm', 'EVM（MetaMask、Binance Wallet…）'], ['btc', 'Bitcoin 地址']] },
-      { k: 'address', label: '公開地址', req: 1, ph: '0x… 或 bc1…' },
-    ],
-    onSave: async v => {
-      if (v.chain === 'evm' && !/^0x[0-9a-fA-F]{40}$/.test(v.address)) throw new Error('EVM 地址格式應為 0x 開頭 42 字元');
-      if (v.chain === 'btc' && !/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,90}$/.test(v.address)) throw new Error('看起來不是比特幣地址');
-      const r = w ? await upd('wallets', w.id, v) : await add('wallets', v);
-      delete S.walletBal[r.id];
-      toast('讀取鏈上餘額中…');
-      await loadWallets(true); await loadPrices(true); render();
-    },
-    onDelete: w && (() => del('wallets', w.id)),
-  });
-}
-
-/* ---------------- shortcut fallback: #add?amount=&merchant=&card= ---------------- */
-function handleHash() {
-  const h = location.hash;
-  if (!h.startsWith('#add')) return;
-  const p = new URLSearchParams(h.split('?')[1] || '');
-  history.replaceState(null, '', location.pathname + location.search);
-  const rawAmt = p.get('amount') || '';
-  const amount = parseFloat(rawAmt.replace(/[^0-9.\-]/g, ''));
-  const cardTxt = (p.get('card') || '').toLowerCase().replace(/\s/g, '');
-  const card = S.cards.find(c => [c.wallet_name, c.name].filter(Boolean).some(k => cardTxt.includes(k.toLowerCase().replace(/\s/g, ''))));
-  formTxn(null, { amount: Number.isFinite(amount) ? amount : '', merchant: p.get('merchant') || '', card_id: card?.id || '', currency: p.get('currency') || 'TWD', source: 'shortcut', card_label: p.get('card') || '' });
-}
-
-/* ---------------- token ---------------- */
-async function loadToken() {
-  if (!CLOUD) return;
-  const { data } = await sb.from('ingest_tokens').select('token').maybeSingle();
-  S.token = data?.token || null;
-}
-async function genToken() {
-  const bytes = crypto.getRandomValues(new Uint8Array(24));
-  const token = 'ac_' + [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
-  const { error } = await sb.from('ingest_tokens').upsert({ user_id: user.id, token });
-  if (error) throw error;
-  S.token = token; render(); toast('已產生新金鑰');
-}
-
-/* ---------------- demo data ---------------- */
-async function seed() {
-  if (S.accounts.length && !confirm('會在現有資料上加入範例，確定？')) return;
-  const a1 = await add('accounts', { name: '主要薪轉 台幣', bank: '範例銀行', currency: 'TWD', balance: 86400 });
-  await add('accounts', { name: '外幣帳戶 美元', bank: '範例銀行', currency: 'USD', balance: 1250 });
-  if (!S.cards.length) await addPresetCards(true);
-  for (const c of S.cards) if (!c.debit_account_id) await upd('cards', c.id, { debit_account_id: a1.id });
-  const [c1, c2, c3] = [S.cards[0], S.cards[1] || S.cards[0], S.cards[2] || S.cards[0]];
-  const ago = h => new Date(Date.now() - h * 3600e3).toISOString();
-  const billedDay = d => { const x = parseYmd(ymd(prevCycleEnd(+d.closing_day, cycleEndOnOrAfter(+d.closing_day, todayDate())))); x.setDate(x.getDate() - 6); x.setHours(12); return x.toISOString(); };
-  await add('transactions', { card_id: c2.id, merchant: '全聯', amount: 486, currency: 'TWD', amount_twd: 486, txn_at: ago(5), source: 'shortcut' });
-  await add('transactions', { card_id: c2.id, merchant: 'LINE Pay 午餐', amount: 160, currency: 'TWD', amount_twd: 160, txn_at: ago(28), source: 'manual' });
-  await add('transactions', { card_id: c2.id, merchant: '誠品書店', amount: 1280, currency: 'TWD', amount_twd: 1280, txn_at: billedDay(c2), source: 'shortcut' });
-  await add('transactions', { card_id: c1.id, merchant: 'Amazon JP', amount: 3200, currency: 'JPY', amount_twd: 690, txn_at: ago(40), source: 'shortcut' });
-  await add('transactions', { card_id: c3.id, merchant: 'Agoda 東京住宿', amount: 210, currency: 'USD', amount_twd: 6790, txn_at: billedDay(c3), source: 'manual' });
-  await add('stocks', { code: '0050', shares: 300, avg_cost: 165 });
-  await add('stocks', { code: '2330', shares: 20, avg_cost: 980 });
-  await add('crypto_holdings', { symbol: 'BTC', cg_id: 'bitcoin', qty: 0.012, venue: 'Binance' });
-  await add('crypto_holdings', { symbol: 'USDT', cg_id: 'tether', qty: 500, venue: 'MAX' });
-  await refreshAll(true);
-  toast('已載入範例資料');
-}
-
-/* config.js 裡的 presetCards：第一次開啟、還沒有任何卡片時自動建立 */
-async function addPresetCards(force) {
-  const list = CFG.presetCards || [];
-  const seenKey = 'ac_preset_seen_' + (CLOUD ? (user?.id || 'cloud') : 'local'); // 每個帳號分開記
-  let seen = [];
-  try { seen = JSON.parse(localStorage.getItem(seenKey) || '[]'); } catch (_) { }
-  if (!CLOUD && localStorage.getItem('ac_preset_done') === '1' && !seen.length) seen = S.cards.map(c => c.name); // 舊版升級
-  const added = [];
-  for (const p of list) {
-    if (S.cards.some(c => c.name === p.name) || (!force && seen.includes(p.name))) continue;
-    await add('cards', { ...p, rewards: presetRewardsFor(p) || [], last_settled: initialSettled(p) });
-    added.push(p.name);
-  }
-  // 舊卡片還沒有回饋設定的，補上建議規則
-  for (const c of S.cards) if (c.rewards == null) await upd('cards', c.id, { rewards: presetRewardsFor(c) || [] });
-  for (const c of S.cards) { // 舊規則補上新的設定欄位（例如 MaiCoin 的逐筆四捨五入、月上限）
-    const pre = presetRewardsFor(c); if (!pre || !(c.rewards || []).length) continue;
-    let changed = false;
-    const next = c.rewards.map(r => {
-      const p = pre.find(x => x.label === r.label); if (!p) return r;
-      const add = {};
-      for (const k of ['round_txn', 'cap_period']) if (p[k] != null && r[k] == null) { add[k] = p[k]; changed = true; }
-      return { ...r, ...add };
-    });
-    if (changed) await upd('cards', c.id, { rewards: next });
-  }
-  try { localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...list.map(p => p.name)])])); } catch (_) { }
-  if (added.length) toast(`已新增 ${added.join('、')}，記得到卡片設定選扣款帳戶`, 4500);
-}
-
-/* ================================================================
- * UI v2：依 2026/10 設計稿改版（總覽、帳戶、信用卡、底部彈窗）
- * ================================================================ */
-const IC = {
-  bank: '<path d="M3 9.5 12 4l9 5.5M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20.5h18"/>',
-  wallet: '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M16 12.5h2M3 9h18"/>',
-  box: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
-  card: '<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6 15h4"/>',
-  chart: '<path d="M4 19.5h16M6 16v-4M10 16V9M14 16v-6M18 16V6"/>',
-  plus: '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>',
-  split: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="12" r="3.5"/><path d="M12 4v2M12 18v2"/>',
-  gear: '<rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M3.5 10h17M7 14.5h4"/>',
-  more: '<circle cx="12" cy="12" r="8.5"/><circle cx="8" cy="12" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16" cy="12" r=".8" fill="currentColor"/>',
-  search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
-  swap: '<path d="M8 4v15M8 19l-3-3M8 19l3-3M16 20V5M16 5l-3 3M16 5l3 3"/>',
-  chev: '<path d="m9 6 6 6-6 6"/>',
-  down: '<path d="m6 9 6 6 6-6"/>',
-  up: '<path d="M12 19V6M6 11l6-6 6 6"/>',
-  arrowDown: '<path d="M12 5v13M6 13l6 6 6-6"/>',
-  food: '<path d="M7 3v8M5 3v4a2 2 0 0 0 4 0V3M7 11v10M16 3c-1.7 1.4-2.5 3.6-2.5 6.5V13H17V3M17 13v8"/>',
-  car: '<path d="M5 16V11l2-5h10l2 5v5M3 16h18M7 19v-3M17 19v-3"/><circle cx="7.5" cy="13" r=".8" fill="currentColor"/><circle cx="16.5" cy="13" r=".8" fill="currentColor"/>',
-  home: '<path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/>',
-  bag: '<path d="M5 8h14l-1 12H6Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
-  play: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3Z"/>',
-  dots: '<circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/>',
-  bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"/>',
-  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
-};
-const svgI = (k, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${IC[k] || ''}</svg>`;
-
-/* ---------- 消費類別 ---------- */
-const CATS = [
-  ['food', '餐飲', 'food', '#e0894f'],
-  ['traffic', '交通', 'car', '#4f8fd6'],
-  ['life', '生活', 'home', '#3fa58a'],
-  ['shop', '購物', 'bag', '#c9699a'],
-  ['fun', '娛樂', 'play', '#8a6fd1'],
-  ['other', '其他', 'dots', '#8f8a80'],
-];
-const CAT = Object.fromEntries(CATS.map(c => [c[0], c]));
-function guessCat(m) {
-  m = (m || '').toLowerCase();
-  if (/手續費|回饋|年費|利息/.test(m)) return 'other';
-  if (/優步[－-]|uber\s*eats|foodpanda|咖啡|cafe|coffee|星巴克|starbucks|麥當勞|mcdonald|肯德基|摩斯|餐|食|飲|串燒|餃|鍋|麵|飯|壽司|拉麵|燒肉|早午|漢堡|甜點|麵包|茶/.test(m)) return 'food';
-  if (/高鐵|台鐵|捷運|悠遊|一卡通|ipass|easycard|uber|優步|計程車|taxi|中油|加油|停車|irent|gogoro|wemo|航空|機票|airline/.test(m)) return 'traffic';
-  if (/全聯|家樂福|7-eleven|7-11|統一超商|全家|萊爾富|ok超商|超商|藥局|屈臣氏|康是美|寶雅|電信|中華電信|台灣大|遠傳|水費|電費|瓦斯|房租|管理費/.test(m)) return 'life';
-  if (/momo|蝦皮|shopee|pchome|amazon|淘寶|百貨|誠品|uniqlo|ikea|costco|好市多|博客來|蝦皮|網購|商城/.test(m)) return 'shop';
-  if (/apple\.com|itunes|netflix|spotify|youtube|disney|steam|playstation|nintendo|電影|威秀|秀泰|kkbox|google\s*play|rately|遊戲/.test(m)) return 'fun';
-  return 'other';
-}
-const catOf = t => CAT[t.category] ? t.category : guessCat(t.merchant);
-const catDot = (k, size = 'md') => { const c = CAT[k] || CAT.other; return `<span class="cat-ic ${size}" style="--c:${c[3]}">${svgI(c[2])}</span>`; };
-
-/* ---------- 色彩與圖示 ---------- */
-const hueOf = s => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
-const ACC_TYPES = [['bank', '銀行帳戶'], ['epay', '電子支付'], ['other', '其他資產']];
-const accType = a => a.type || (/line\s*pay|街口|全支付|悠遊付|一卡通|pi錢包|icash|paypal|wise/i.test(`${a.name} ${a.bank}`) ? 'epay' : 'bank');
-function accIcon(a) {
-  const label = (a.bank || a.name || '?').replace(/銀行|商業|股份|有限公司/g, '').trim().slice(0, 1).toUpperCase();
-  const h = hueOf(a.bank || a.name);
-  return `<span class="acc-ic" style="--h:${h}">${esc(label)}</span>`;
-}
-const BANKS = ['聯邦銀行', '永豐銀行', '星展銀行', '國泰世華', '玉山銀行', '台新銀行', '中國信託', '富邦銀行', '台北富邦', '第一銀行', '兆豐銀行', '其他'];
-
-/* ---------- 共用：底部彈窗表單 ---------- */
-function openForm({ title, fields, data = {}, onSave, onDelete, note = '', tabs = null, submitLabel = '儲存', cancelLabel = '取消' }) {
-  const m = $('#modal');
-  const val = f => data[f.k] ?? f.def ?? '';
-  const fieldHtml = f => {
-    const v = val(f), req = f.req ? 'required' : '', cls = `fld${f.half ? ' half' : ''}`;
-    if (f.type === 'swap') return `<div class="fld swap-row"><button type="button" class="swap-btn" data-swap="${f.a},${f.b}" aria-label="對調">${svgI('swap')}</button></div>`;
-    if (f.type === 'check') return `<label class="${cls} check"><input type="checkbox" name="${f.k}" ${v ? 'checked' : ''}> <span>${esc(f.label)}</span></label>`;
-    let input;
-    if (f.type === 'select') input = `<span class="sel"><select name="${f.k}" ${req}>${f.options.map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span>`;
-    else if (f.type === 'chips') input = `<input type="hidden" name="${f.k}" value="${esc(v)}"><span class="chips" data-chips="${f.k}">${f.options.map(([ov, ol, ic]) => `<button type="button" class="chip-btn${String(ov) === String(v) ? ' on' : ''}" data-v="${esc(ov)}">${ic ? catDot(ov, 'sm') : ''}${esc(ol)}</button>`).join('')}</span>`;
-    else if (f.type === 'money') input = `<span class="money-in"><span class="cur" data-cur-for="${f.k}">${esc(f.cur || 'NT$')}</span><input name="${f.k}" type="number" step="any" inputmode="decimal" value="${esc(v)}" placeholder="0" ${req}></span>${f.quick ? `<span class="quick">${f.quick.map(q => `<button type="button" data-quick="${f.k}" data-q="${q}">+${q.toLocaleString()}</button>`).join('')}</span>` : ''}`;
-    else input = `<input name="${f.k}" type="${f.type || 'text'}" value="${esc(v)}" ${f.type === 'number' ? 'step="any" inputmode="decimal"' : ''} ${f.ph ? `placeholder="${esc(f.ph)}"` : ''} ${req}>`;
-    return `<label class="${cls}"><span class="lb">${esc(f.label)}</span>${input}${f.hint ? `<span class="hint">${esc(f.hint)}</span>` : ''}</label>`;
-  };
-  const main = fields.filter(f => !f.more), more = fields.filter(f => f.more);
-  m.innerHTML = `<form class="sheet"><span class="grab"></span>
-    <div class="sheet-head"><h3>${esc(title)}</h3><button type="button" class="x" data-f="cancel" aria-label="關閉">×</button></div>
-    ${tabs ? `<div class="seg-ctl sheet-tabs">${tabs.map(t => `<button type="button" class="${t.on ? 'on' : ''}" ${t.on ? '' : `data-act="${t.act}"`}>${esc(t.label)}</button>`).join('')}</div>` : ''}
-    ${note}<div class="fgrid">${main.map(fieldHtml).join('')}</div>
-    ${more.length ? `<details class="more"><summary>更多選項</summary><div class="fgrid">${more.map(fieldHtml).join('')}</div></details>` : ''}
-    <div class="actions sheet-actions">${onDelete ? '<button type="button" class="btn danger" data-f="del">刪除</button>' : ''}
-      <button type="button" class="btn" data-f="cancel">${esc(cancelLabel)}</button><button class="btn primary" type="submit">${esc(submitLabel)}</button></div></form>`;
-  m.hidden = false;
-  const form = $('form', m);
-  const close = () => { m.hidden = true; m.innerHTML = ''; };
-  m.onclick = e => { if (e.target === m) close(); };
-  m.querySelectorAll('[data-f="cancel"]').forEach(b => b.onclick = close);
-  m.querySelectorAll('[data-chips]').forEach(box => box.onclick = e => {
-    const b = e.target.closest('.chip-btn'); if (!b) return;
-    box.querySelectorAll('.chip-btn').forEach(x => x.classList.toggle('on', x === b));
-    form.elements[box.dataset.chips].value = b.dataset.v;
-  });
-  m.querySelectorAll('[data-quick]').forEach(b => b.onclick = () => { const el = form.elements[b.dataset.quick]; el.value = num(el.value) + +b.dataset.q; el.dispatchEvent(new Event('input')); });
-  m.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => { const [x, y] = b.dataset.swap.split(','); const ex = form.elements[x], ey = form.elements[y]; [ex.value, ey.value] = [ey.value, ex.value]; ex.dispatchEvent(new Event('change')); });
-  if (onDelete) $('[data-f="del"]', m).onclick = async () => { if (confirm('確定刪除？')) { try { await onDelete(); close(); render(); } catch (err) { toast('刪除失敗：' + err.message); } } };
-  form.onsubmit = async e => {
-    e.preventDefault();
-    const out = {};
-    for (const f of fields) {
-      if (f.type === 'swap') continue;
-      const el = form.elements[f.k]; if (!el) continue;
-      out[f.k] = f.type === 'check' ? el.checked : (f.type === 'number' || f.type === 'money') ? (el.value === '' ? null : parseFloat(el.value)) : el.value.trim();
-    }
-    const btn = $('button[type=submit]', form); btn.disabled = true;
-    try { const r = await onSave(out, form); if (r === false) { btn.disabled = false; return; } close(); render(); }
-    catch (err) { btn.disabled = false; toast('儲存失敗：' + (err.message || err)); }
-  };
-  return form;
-}
-
-/* ---------- 交易列 ---------- */
-function txnRow(t, opts = {}) {
-  const c = S.cards.find(x => x.id === t.card_id);
-  const foreign = t.currency && t.currency !== 'TWD';
-  const k = catOf(t);
-  const d = new Date(t.txn_at);
-  return `<div class="row click txn" data-act="edit-txn" data-id="${t.id}" data-cat="${k}" data-text="${esc((t.merchant || '').toLowerCase())}">
-    ${catDot(k)}
-    <div class="grow"><div class="title">${esc(t.merchant || '（未填商家）')}</div>
-      <div class="meta">${d.getMonth() + 1}/${pad(d.getDate())} · ${CAT[k][1]}${opts.showCard !== false ? ` · ${c ? esc(c.name) : `<span class="warn">${esc(t.card_label || '未對應卡片')}</span>`}` : ''}${t.source === 'shortcut' ? ' · 捷徑' : ''}${t.settled_cycle ? ' · 已扣款' : ''}</div></div>
-    <div class="right"><div class="amt-sm">${money(billAmt(t))}</div>${foreign ? `<div class="meta">${money(num(t.amount), t.currency)}</div>` : ''}${rewOf(t.id) > 0.05 ? `<div class="meta rew">回饋 ${money(rewOf(t.id), 'TWD', rewOf(t.id) < 10 ? 1 : 0)}</div>` : ''}</div></div>`;
-}
-
-/* ---------- 01 總覽 ---------- */
-function splitTotals() {
-  const t = totals();
-  const accTW = a => { const v = toTWD(num(a.balance), a.currency); return Number.isFinite(v) ? v : 0; };
-  const bank = sum(S.accounts.filter(a => accType(a) !== 'other'), accTW);
-  const otherAcc = sum(S.accounts.filter(a => accType(a) === 'other'), accTW);
-  const invest = t.stock + t.crypto;
-  const other = otherAcc + t.recv;
-  const gross = bank + invest + other;
-  return { ...t, bankOnly: bank, invest, other, gross };
-}
-function areaChart(points) {
-  if (points.length < 2) return '<div class="chart-empty">每天開 App 會自動記一筆，滿兩天就會出現走勢</div>';
-  const W = 320, H = 96, vals = points.map(p => p.v), mn = Math.min(...vals), mx = Math.max(...vals), rng = mx - mn || 1;
-  const xy = points.map((p, i) => [i / (points.length - 1) * W, H - 10 - (p.v - mn) / rng * (H - 24)]);
-  const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-  const [lx, ly] = xy.at(-1);
-  return `<svg class="area" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-    <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--gold);stop-opacity:.32"/><stop offset="1" style="stop-color:var(--gold);stop-opacity:0"/></linearGradient></defs>
-    <path d="${line} L${W} ${H} L0 ${H}Z" fill="url(#ag)"/><path d="${line}" fill="none" stroke="var(--gold)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-    </svg><span class="area-dot" style="left:${(lx / W * 100).toFixed(2)}%;top:${(ly / H * 100).toFixed(2)}%"></span>`;
-}
-function donut(parts, total, label) {
-  const R = 52, C = 2 * Math.PI * R;
-  const pos = parts.filter(p => p.v > 0), sumPos = sum(pos, p => p.v) || 1;
-  let off = 0;
-  const arcs = pos.map(p => { const len = p.v / sumPos * C; const s = `<circle r="${R}" fill="none" stroke="${p.c}" stroke-width="16" stroke-dasharray="${Math.max(0, len - 2).toFixed(2)} ${(C - len + 2).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"/>`; off += len; return s; }).join('');
-  return `<div class="donut-wrap"><svg class="donut" viewBox="-70 -70 140 140" aria-hidden="true"><g transform="rotate(-90)"><circle r="${R}" fill="none" stroke="var(--panel-2)" stroke-width="16"/>${arcs}</g></svg>
-    <div class="donut-c"><small>${esc(label)}</small><b>${total}</b></div></div>`;
-}
-const shortMoney = v => S.hide ? '••••' : Math.abs(v) >= 1e6 ? `NT$${(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e4 ? `NT$${(v / 1e4).toFixed(1)}萬` : money(v);
-VIEWS.overview = () => {
-  const t = splitTotals();
-  const range = S.range || 30;
-  const since = new Date(); since.setDate(since.getDate() - range);
-  const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.net) }));
-  if (pts.length) pts[pts.length - 1] = { v: t.net }; else pts.push({ v: t.net });
-  const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
-  const pctOf = v => t.gross > 0 ? v / t.gross * 100 : 0;
-  const tile = (ic, name, v, p, neg) => `<div class="tile"><div class="tile-h">${svgI(ic)}<span>${name}</span></div><b>${money(v)}</b><span class="tp ${neg ? 'neg' : 'pos'}">${svgI(neg ? 'arrowDown' : 'up', 'ti')}${Math.abs(p).toFixed(1)}%</span></div>`;
-  const cardDebt = t.debt + t.liab;
-  const parts = [
-    { n: '投資', v: t.invest, c: 'var(--c-stock)' },
-    { n: '銀行存款', v: t.bankOnly, c: 'var(--c-bank)' },
-    { n: '其他', v: t.other, c: 'var(--c-recv)' },
-  ];
-  const legend = [...parts.map(p => `<div><i style="background:${p.c}"></i><span>${p.n}</span><b>${pctOf(p.v).toFixed(1)}%</b></div>`),
-    `<div><i style="background:var(--c-debt)"></i><span>信用卡／負債</span><b class="neg">-${pctOf(cardDebt).toFixed(1)}%</b></div>`].join('');
-  const states = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
-  const recent = S.transactions.slice().sort((a, b) => b.txn_at.localeCompare(a.txn_at)).slice(0, 5);
-  const rewTotal = sum(S.cards, c => cycleReward(c, cardState(c).open.end).total);
-  return `
-  <section class="hero2">
-    <div class="hero2-top"><span class="lbl">總資產淨值</span>
-      <span class="sel mini"><select data-range>${[[30, '近一個月'], [90, '近三個月'], [365, '近一年']].map(([v, l]) => `<option value="${v}" ${v === range ? 'selected' : ''}>${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></div>
-    <div class="hero2-num">${money(t.net)}</div>
-    <div class="hero2-chg ${chg >= 0 ? 'pos' : 'neg'}">${svgI(chg >= 0 ? 'up' : 'arrowDown', 'ti')}${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% <span>${range === 30 ? '本月' : range === 90 ? '近三個月' : '今年'}變動</span></div>
-    <div class="area-box">${areaChart(pts)}</div>
-  </section>
-  <div class="tiles">
-    ${tile('bank', '銀行帳戶', t.bankOnly, pctOf(t.bankOnly))}
-    ${tile('card', '信用卡未繳', cardDebt, pctOf(cardDebt), true)}
-    ${tile('chart', '投資資產', t.invest, pctOf(t.invest))}
-    ${tile('box', '其他資產', t.other, pctOf(t.other))}
-  </div>
-  <section class="panel dist"><h4>資產分布</h4><div class="dist-body">${donut(parts, shortMoney(t.gross), '總資產')}<div class="dist-leg">${legend}</div></div></section>
-  ${rewTotal > 0 ? `<button class="rew-strip" data-act="recommend"><span>本期預估回饋</span><b>${money(rewTotal)}</b><small>刷哪張最划算 ›</small></button>` : ''}
-  <h2>接下來的扣款</h2>
-  <section class="panel">${states.length ? states.slice(0, 5).map(({ c, st }) => `<div class="row click" data-act="open-card" data-id="${c.id}">
-      <div class="date-glyph" style="--cc:${esc(c.color || '#b8893a')}"><b>${st.next.date.getDate()}</b><small>${st.next.date.getMonth() + 1} 月</small></div>
-      <div class="grow"><div class="title">${esc(c.name)}</div><div class="meta one">${st.next.days === 0 ? '<span class="warn">今天扣款</span>' : `${st.next.days} 天後扣款`}・${st.next.final ? '帳單已出' : '累計中'}</div></div>
-      <div class="right amt-sm">${money(st.next.amount)}</div></div>`).join('') : `<button class="empty-cta" data-act="${(CFG.presetCards || []).length ? 'preset-cards' : 'add-card'}">新增信用卡</button>`}</section>
-  <h2>最近刷卡</h2>
-  <section class="panel">${recent.map(x => txnRow(x)).join('') || '<button class="empty-cta" data-act="add-txn">記下第一筆刷卡</button>'}</section>`;
-};
-
-/* ---------- 02 帳戶 ---------- */
-VIEWS.bank = () => {
-  const tab = S.accTab || 'bank';
-  const accs = S.accounts.filter(a => accType(a) === tab);
-  const filt = S.accFilter || 'all';
-  const shown = accs.filter(a => filt === 'all' || (filt === 'twd' ? a.currency === 'TWD' : a.currency !== 'TWD'));
-  const total = sum(shown, a => { const v = toTWD(num(a.balance), a.currency); return Number.isFinite(v) ? v : 0; }) + (tab === 'other' ? sum(S.receivables.filter(r => !r.received_at), r => num(r.amount)) : 0);
-  const rows = shown.map(a => `<div class="row click acc" data-act="edit-acc" data-id="${a.id}">
-      ${accIcon(a)}
-      <div class="grow"><div class="title">${esc(a.name)}</div><div class="meta">${esc([a.kind || (tab === 'epay' ? '電子支付' : '活存'), a.note].filter(Boolean).join('・'))}${a.currency !== 'TWD' ? `・${esc(a.currency)}` : ''}</div></div>
-      <div class="right"><div class="amt-sm">${money(num(a.balance), a.currency)}</div>${a.currency !== 'TWD' ? `<div class="meta">≈ ${money(toTWD(num(a.balance), a.currency))}</div>` : ''}</div>
-      ${svgI('chev', 'chev')}</div>`).join('');
-  const logs = S.balance_log.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).filter(l => accs.some(a => a.id === l.account_id)).slice(0, 12).map(l => {
-    const a = S.accounts.find(x => x.id === l.account_id);
-    return `<div class="row"><div class="grow"><div class="title">${esc(l.note || '餘額調整')}</div><div class="meta">${new Date(l.created_at).toLocaleDateString('zh-TW')} · ${esc(a?.name || '')}</div></div>
-      <div class="right amt-sm ${num(l.delta) < 0 ? 'neg' : 'pos'}">${num(l.delta) > 0 ? '+' : ''}${money(num(l.delta), a?.currency)}</div></div>`;
-  }).join('');
-  const label = { bank: '銀行帳戶總額', epay: '電子支付總額', other: '其他資產總額' }[tab];
-  return `${S.missingTables.length ? `<div class="banner warn">應收款／負債的資料表還沒建立：請到 Supabase 執行 README 裡的 SQL。</div>` : ''}
-    <div class="seg-ctl">${ACC_TYPES.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-act="acc-tab" data-t="${k}">${l}</button>`).join('')}</div>
-    <section class="sum-card">
-      <div class="sum-top"><span class="lbl">${label}</span>
-        <span class="sel mini"><select data-accfilter>${[['all', '全部帳戶'], ['twd', '台幣'], ['fx', '外幣']].map(([v, l]) => `<option value="${v}" ${v === filt ? 'selected' : ''}>${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></div>
-      <b>${money(total)}</b>
-      <span class="sum-art">${svgI(tab === 'epay' ? 'wallet' : tab === 'other' ? 'box' : 'bank', 'art')}</span>
-    </section>
-    <section class="list-card">${rows || `<div class="empty">還沒有${ACC_TYPES.find(x => x[0] === tab)[1]}</div>`}</section>
-    <div class="actions"><button class="btn outline" data-act="add-acc">＋ 新增帳戶</button>${S.accounts.length > 1 ? '<button class="btn" data-act="transfer">⇄ 轉帳</button>' : ''}</div>
-    ${tab === 'other' ? recvSection() + liabSection() : ''}
-    ${logs ? `<h2>異動紀錄</h2><section class="panel">${logs}</section>` : ''}`;
-};
-function formAccount(a) {
-  const tab = a ? accType(a) : (S.accTab || 'bank');
-  openForm({
-    title: a ? '編輯帳戶' : '新增帳戶', data: a ? { ...a, type: accType(a) } : { type: tab, currency: 'TWD', balance: 0 },
-    fields: [
-      { k: 'type', label: '分類', type: 'chips', options: ACC_TYPES },
-      { k: 'name', label: '帳戶名稱', req: 1, ph: '例：永豐大戶、LINE Pay' },
-      { k: 'bank', label: '銀行／機構', ph: '例：永豐銀行', half: true },
-      { k: 'kind', label: '帳戶類型', ph: '活存、定存、數位帳戶…', half: true },
-      ...(a ? [] : [{ k: 'balance', label: '目前餘額', type: 'money' }]),
-      { k: 'currency', label: '幣別', type: 'select', options: CURRENCIES, more: true },
-      { k: 'note', label: '備註（顯示在名稱下方）', ph: '例：主要帳戶、自動扣款、2026/05 到期', more: true },
-    ],
-    onSave: async v => { v.type = v.type || 'bank'; if (a) await upd('accounts', a.id, v); else await add('accounts', { ...v, balance: v.balance || 0 }); S.accTab = v.type; },
-    onDelete: a && (async () => {
-      if (S.cards.some(c => c.debit_account_id === a.id)) throw new Error('有信用卡用這個帳戶扣款，請先改掉卡片設定');
-      await del('accounts', a.id);
-    }),
-  });
-}
-
-/* ---------- 05 轉帳／新增紀錄／對帳 ---------- */
-const MONEY_TABS = cur => [['transfer', '轉帳'], ['money-in-out', '新增紀錄'], ['money-set', '對帳']].map(([act, label]) => ({ act, label, on: act === cur }));
-function formTransfer(from) {
-  if (S.accounts.length < 2) { toast('至少要有兩個帳戶才能轉帳'); return; }
-  const opts = S.accounts.map(a => [a.id, `${a.name}（${money(num(a.balance), a.currency)}）`]);
-  const f0 = from?.id || S.accounts[0].id;
-  let confirmStep = false;
-  const form = openForm({
-    title: '帳戶轉帳', tabs: MONEY_TABS('transfer'), submitLabel: '下一步',
-    data: { from: f0, to: S.accounts.find(a => a.id !== f0)?.id, fee: 0 },
-    fields: [
-      { k: 'from', label: '轉出帳戶', type: 'select', options: opts },
-      { type: 'swap', a: 'from', b: 'to' },
-      { k: 'to', label: '轉入帳戶', type: 'select', options: opts },
-      { k: 'amount', label: '轉出金額', type: 'money', req: 1, quick: [1000, 5000, 10000] },
-      { k: 'fee', label: '手續費', type: 'number', hint: '跨行轉帳常見 NT$10–15' },
-      { k: 'note', label: '備註', ph: '例：存到大戶、換美金' },
-      { k: 'to_amount', label: '轉入金額（幣別不同時填實際入帳）', type: 'number', more: true, hint: '留空：同幣別等於轉出金額；不同幣別依即時匯率換算' },
-    ],
-    onSave: async (v, f) => {
-      const A = S.accounts.find(a => a.id === v.from), B = S.accounts.find(a => a.id === v.to);
-      if (!A || !B || A.id === B.id) throw new Error('轉出和轉入要選不同帳戶');
-      if (!(v.amount > 0)) throw new Error('金額要大於 0');
-      const inAmt = v.to_amount != null ? v.to_amount : (A.currency === B.currency ? v.amount : Math.round(fromTWD(toTWD(v.amount, A.currency), B.currency) * 100) / 100);
-      if (!Number.isFinite(inAmt)) throw new Error('抓不到匯率，請在「更多選項」填轉入金額');
-      const fee = num(v.fee);
-      if (!confirmStep) { // 第一步：顯示確認摘要
-        confirmStep = true;
-        const box = document.createElement('div'); box.className = 'confirm-box';
-        box.innerHTML = `<div><span>${esc(A.name)}</span><b class="neg">-${money(v.amount + fee, A.currency)}</b></div><div><span>${esc(B.name)}</span><b class="pos">+${money(inAmt, B.currency)}</b></div>${fee ? `<small>含手續費 ${money(fee, A.currency)}</small>` : ''}`;
-        f.querySelector('.sheet-actions').before(box);
-        f.querySelector('button[type=submit]').textContent = '確認轉帳';
-        f.querySelectorAll('.fgrid, details.more').forEach(x => x.classList.add('dim'));
-        return false;
-      }
-      const aAfter = Math.round((num(A.balance) - v.amount - fee) * 100) / 100;
-      const bAfter = Math.round((num(B.balance) + inAmt) * 100) / 100;
-      const tag = v.note ? `・${v.note}` : '';
-      await upd('accounts', A.id, { balance: aAfter });
-      await add('balance_log', { account_id: A.id, delta: -(v.amount + fee), balance_after: aAfter, note: `轉帳 → ${B.name}${fee ? `（含手續費 ${fee}）` : ''}${tag}` });
-      await upd('accounts', B.id, { balance: bAfter });
-      await add('balance_log', { account_id: B.id, delta: inAmt, balance_after: bAfter, note: `轉帳 ← ${A.name}${tag}` });
-      toast(`已從 ${A.name} 轉 ${money(v.amount, A.currency)} 到 ${B.name}`);
-    },
-  });
-  form.addEventListener('input', () => { if (confirmStep) { confirmStep = false; form.querySelector('.confirm-box')?.remove(); form.querySelector('button[type=submit]').textContent = '下一步'; form.querySelectorAll('.dim').forEach(x => x.classList.remove('dim')); } });
-}
-function formMoney(mode, a0) {
-  if (!S.accounts.length) { formAccount(); return; }
-  const isSet = mode === 'set';
-  openForm({
-    title: isSet ? '對帳' : '新增收支紀錄', tabs: MONEY_TABS(isSet ? 'money-set' : 'money-in-out'),
-    data: { account_id: a0?.id || S.accounts[0].id, mode: isSet ? 'set' : 'in' },
-    note: isSet ? '<p class="meta" style="margin:-4px 0 10px">輸入銀行 App 顯示的實際餘額，差額會記成一筆對帳調整。</p>' : '',
-    fields: [
-      { k: 'account_id', label: '帳戶', type: 'select', options: S.accounts.map(x => [x.id, `${x.name}（${money(num(x.balance), x.currency)}）`]) },
-      ...(isSet ? [] : [{ k: 'mode', label: '類型', type: 'chips', options: [['in', '存入／收入'], ['out', '提出／支出']] }]),
-      { k: 'amount', label: isSet ? '目前實際餘額' : '金額', type: 'money', req: 1, quick: isSet ? null : [1000, 5000, 10000] },
-      { k: 'note', label: '說明', ph: isSet ? '例：月底對帳' : '例：薪水、房租、提款' },
-    ],
-    onSave: async v => {
-      const a = S.accounts.find(x => x.id === v.account_id);
-      const cur = num(a.balance), m = isSet ? 'set' : v.mode;
-      const after = m === 'set' ? v.amount : m === 'in' ? cur + v.amount : cur - v.amount;
-      const delta = Math.round((after - cur) * 100) / 100;
-      await upd('accounts', a.id, { balance: after });
-      await add('balance_log', { account_id: a.id, delta, balance_after: after, note: v.note || (m === 'set' ? '對帳調整' : m === 'in' ? '存入' : '支出') });
-    },
-  });
-}
-function formAdjust(a0) { formMoney('in-out', a0); }
-
-/* ---------- 03 信用卡列表 ---------- */
-function cardRow(c, st) {
-  const n = st.next;
-  const rew = (c.rewards || []).length ? cycleReward(c, st.open.end).total : 0;
-  return `<button class="crow${S.cardOpen === c.id ? ' sel' : ''}" style="--cc:${esc(c.color || '#b8893a')}" data-act="open-card" data-id="${c.id}">
-    <span class="crow-ic">${svgI('card')}</span>
-    <span class="crow-main"><span class="crow-name">${esc(c.name)}</span>${c.last4 ? `<span class="crow-l4">•••• ${esc(c.last4)}</span>` : ''}
-      <span class="crow-sub">${n.final ? `${md(st.billed.end)} 帳單已出` : `本期累計中・${n.closeDays === 0 ? '今天' : n.closeDays + ' 天後'}結帳`}${rew ? `・回饋約 ${money(rew)}` : ''}</span></span>
-    <span class="crow-r"><b>${money(n.amount)}</b><span class="${n.days <= 3 ? 'warn' : ''}">${n.days === 0 ? '今天扣款' : md(ymd(n.date)) + ' 扣款'}</span></span>
-  </button>`;
-}
-VIEWS.cards = () => {
-  const orphan = S.transactions.filter(t => !t.card_id && !t.settled_cycle);
-  const banner = orphan.length ? `<div class="banner warn">有 ${orphan.length} 筆紀錄對不到卡片，點開指定卡片，再到卡片設定補上「Apple 錢包裡的卡片名稱」。</div><section class="panel" style="margin-bottom:14px">${orphan.map(x => txnRow(x)).join('')}</section>` : '';
-  if (!S.cards.length) {
-    const preset = (CFG.presetCards || []).length;
-    return `${banner}<button class="cc cc-add" style="width:100%" data-act="${preset ? 'preset-cards' : 'add-card'}"><span class="plus">✦</span>${preset ? `加入我的 ${CFG.presetCards.length} 張信用卡` : '新增信用卡'}</button>`;
-  }
-  const open = S.cards.find(c => c.id === S.cardOpen);
-  if (open) return cardDetailView(open);
-  const all = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
-  const dueMonth = monthKey(all[0].st.next.date); // 「本期」＝最近一次要繳款的那個月
-  const isNow = x => monthKey(x.st.next.date) <= dueMonth;
-  const f = S.cardFilter || 'all';
-  const list = all.filter(x => f === 'all' || (f === 'now' ? isNow(x) : !isNow(x)));
-  const due = all.filter(isNow), nearest = all[0];
-  const chip = (k, l, n) => `<button class="${f === k ? 'on' : ''}" data-act="card-filter" data-f="${k}">${l}(${n})</button>`;
-  return `${banner}
-    <section class="sum-card">
-      <div class="sum-top"><span class="lbl">信用卡總覽</span><span class="sum-r"><small>近一筆</small><b>${md(ymd(nearest.st.next.date))}</b><small>${esc(nearest.c.name)}</small></span></div>
-      <b>${money(sum(due, x => x.st.next.amount))}</b>
-      <span class="meta">${nearest.st.next.date.getMonth() + 1} 月要繳 ${due.length} 張卡</span>
-    </section>
-    <div class="pills">${chip('all', '全部', all.length)}${chip('now', '本期', due.length)}${chip('next', '下期', all.length - due.length)}</div>
-    <div class="crows">${list.map(x => cardRow(x.c, x.st)).join('') || '<div class="empty">沒有符合的卡片</div>'}</div>
-    <div class="actions two"><button class="btn outline" data-act="recommend">${svgI('bulb', 'bi')}這筆刷哪張最划算？</button><button class="btn outline" data-act="add-card">＋ 新增信用卡</button></div>
-    <div class="actions"><button class="btn ghost small" data-act="import-txn">匯入帳單明細</button></div>`;
-};
-
-/* ---------- 04 信用卡詳細 ---------- */
-function cardFace(c) {
-  const st = cardState(c), n = st.next;
-  return `<div class="cc" style="--cc:${esc(c.color || '#c9a96e')}">
-    ${constellation(c.id)}
-    <span class="cc-top"><span class="cc-name">${esc(c.name)}</span><svg class="cc-chip" viewBox="0 0 34 26" aria-hidden="true"><rect x=".5" y=".5" width="33" height="25" rx="5"/><path d="M0 9h11M0 17h11M23 9h11M23 17h11M11 0v26M23 0v26"/></svg></span>
-    ${c.last4 ? `<span class="cc-num">•••• ${esc(c.last4)}</span>` : ''}
-    <span class="cc-mid"><b>${money(n.amount)}</b>${(c.rewards || []).length ? `<em class="cc-rew">本期回饋約 ${money(cycleReward(c, st.open.end).total)}</em>` : ''}</span>
-    <span class="cc-bot"><span>${n.final ? `${md(st.billed.end)} 帳單・${md(ymd(n.date))} 扣款` : `${md(st.open.end)} 結帳・${md(ymd(st.open.due))} 扣款`}</span><span>${n.days === 0 ? '今天扣款' : n.days + ' 天後'}</span></span>
-  </div>`;
-}
-function cardDetailView(c) {
-  const st = cardState(c), cy = st.open, bl = st.billed;
-  const acc = S.accounts.find(a => a.id === c.debit_account_id);
-  const debt = sum(unsettled(c.id), billAmt), lim = num(c.credit_limit);
-  const tab = S.cardTab || 'cur';
-  const items = tab === 'cur' ? [...(bl ? bl.items : []), ...cy.items].sort(byTimeDesc) : S.transactions.filter(t => t.card_id === c.id && t.settled_cycle).sort(byTimeDesc);
-  const hist = S.settlements.filter(s => s.card_id === c.id).sort((a, b) => String(b.cycle_end).localeCompare(String(a.cycle_end)));
-  const usedCats = [...new Set(items.map(catOf))];
-  return `<div class="cd-nav"><button class="btn small ghost back" data-act="cards-home">‹ 所有卡片</button>
-      <span>${S.cards.length > 1 ? `<button class="icon-btn ring" data-act="card-step" data-d="-1" aria-label="上一張">${svgI('chev', 'flip')}</button><button class="icon-btn ring" data-act="card-step" data-d="1" aria-label="下一張">${svgI('chev')}</button>` : ''}</span></div>
-    <div class="cd-face">${cardFace(c)}</div>
-    <div class="seg-ctl">${[['cur', '本期'], ['hist', '歷史']].map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-act="card-tab" data-t="${k}">${l}</button>`).join('')}</div>
-    ${tab === 'cur' ? `<div class="info-grid">
-        <div><small>本期區間</small><b>${md(cy.start)} – ${md(cy.end)}</b></div>
-        <div><small>扣款帳戶</small><b class="txt">${acc ? esc(acc.name) : '<span class="warn">未設定</span>'}</b></div>
-        <div><small>已出帳金額</small><b>${bl ? money(bl.total) : '—'}</b></div>
-        <div><small>扣款日</small><b>${md(ymd(st.next.date))}</b></div>
-      </div>
-      ${lim ? `<div class="usage"><div class="meter"><i style="width:${Math.min(100, debt / lim * 100).toFixed(1)}%${debt / lim > .8 ? ';background:var(--danger)' : ''}"></i></div><span>本期已使用 ${Math.round(debt / lim * 100)}%・剩餘額度 ${money(Math.max(0, lim - debt))}</span></div>` : ''}
-      ${bl ? `<button class="btn small outline paid-btn" data-act="paid-bill" data-id="${c.id}">${md(bl.end)} 帳單已經繳了</button>` : ''}`
-      : `<section class="panel">${hist.length ? hist.map(h => `<div class="row"><div class="grow"><div class="title">${md(ymd(dueFor(c, String(h.cycle_end).slice(0, 10))))} 扣款</div><div class="meta">${md(h.cycle_end)} 帳單</div></div><div class="right amt-sm">${money(num(h.amount))}</div></div>`).join('') : '<div class="empty">還沒有扣款紀錄</div>'}</section>`}
-    <div class="qa">
-      <button data-act="add-txn" data-card="${c.id}">${svgI('plus')}<span>新增消費</span></button>
-      <button data-act="add-liab-card" data-card="${c.id}">${svgI('split')}<span>分期設定</span></button>
-      <button data-act="edit-card" data-id="${c.id}">${svgI('gear')}<span>卡片設定</span></button>
-      <button data-act="card-more" data-id="${c.id}">${svgI('more')}<span>更多</span></button>
-    </div>
-    <section class="panel txn-panel">
-      <div class="tp-head"><h4>${tab === 'cur' ? '消費紀錄' : '已扣款消費'}</h4>
-        <button class="icon-btn ring sm" data-act="txn-search" aria-label="搜尋">${svgI('search')}</button>
-        <span class="sel mini"><select data-catfilter>${[['', '全部類別'], ...CATS.filter(x => usedCats.includes(x[0])).map(x => [x[0], x[1]])].map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></div>
-      <input class="txn-q" type="search" placeholder="搜尋商家" hidden>
-      <div class="txn-list">${items.map(x => txnRow(x, { showCard: false })).join('') || '<div class="empty">沒有消費紀錄</div>'}</div>
-    </section>
-    ${tab === 'cur' ? rewardPanel(c, st) : ''}`;
-}
-function filterTxnList() {
-  const q = ($('.txn-q')?.value || '').trim().toLowerCase(), cat = $('[data-catfilter]')?.value || '';
-  document.querySelectorAll('.txn-list .txn').forEach(r => { r.hidden = !!((q && !r.dataset.text.includes(q)) || (cat && r.dataset.cat !== cat)); });
-}
-function openCardMore(c) {
-  const st = cardState(c);
-  const m = $('#modal');
-  m.innerHTML = `<div class="sheet"><span class="grab"></span><div class="sheet-head"><h3>${esc(c.name)}</h3><button type="button" class="x" data-close>×</button></div>
-    <div class="menu">
-      ${st.billed ? `<button data-act="paid-bill" data-id="${c.id}">${md(st.billed.end)} 帳單已經繳了</button>` : ''}
-      <button data-act="import-txn">匯入帳單明細</button>
-      <button data-act="recommend">這筆刷哪張最划算？</button>
-      <button data-act="add-liab-card" data-card="${c.id}">新增分期</button>
-      <button data-act="edit-card" data-id="${c.id}">卡片設定</button>
-    </div></div>`;
-  m.hidden = false;
-  m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) { m.hidden = true; m.innerHTML = ''; } };
-}
-
-/* ---------- 新增信用卡 ---------- */
-function formCard(c) {
-  openForm({
-    title: c ? '信用卡設定' : '新增信用卡', data: c ? { ...c } : { closing_day: 20, fx_fee: 1.5, color: '#b8893a' },
-    fields: [
-      { k: 'bank', label: '發卡銀行', type: 'select', options: [['', '請選擇銀行'], ...BANKS.map(b => [b, b])] },
-      { k: 'name', label: '卡片名稱', req: 1, ph: '例：聯邦 MaiCoin 聯名卡' },
-      { k: 'closing_day', label: '每月結帳日', type: 'number', req: 1, half: true },
-      { k: 'due_day', label: '每月扣款日', type: 'number', half: true, hint: '留空＝結帳日當天' },
-      { k: 'debit_account_id', label: '扣款帳戶', type: 'select', options: accOptions() },
-      { k: 'last4', label: '卡號末四碼（選填）', ph: '3138', half: true },
-      { k: 'credit_limit', label: '信用額度（選填）', type: 'number', half: true },
-      { k: 'color', label: '代表色', type: 'select', options: [['#b8893a', '琥珀金'], ['#4f9a92', '青瓷'], ['#5b72c4', '霧藍'], ['#8a63b8', '薰紫'], ['#c0623f', '赭紅'], ['#5d6378', '石墨']] },
-      { k: 'wallet_name', label: 'Apple 錢包裡的卡片名稱', ph: '捷徑比對用，填一部分即可', more: true },
-      { k: 'fx_fee', label: '國外交易手續費率（%）', type: 'number', more: true, hint: '多數卡 1.5%，免手續費填 0' },
-      { k: 'cycle_start', label: '改結帳日過渡期：本期從哪天開始', type: 'date', more: true },
-      { k: 'first_close', label: '改結帳日後第一次結帳日', type: 'date', more: true },
-    ],
-    onSave: async v => {
-      v.closing_day = Math.max(1, Math.min(31, Math.round(v.closing_day)));
-      v.due_day = v.due_day == null ? null : Math.max(1, Math.min(31, Math.round(v.due_day)));
-      v.debit_account_id = v.debit_account_id || null;
-      v.cycle_start = v.cycle_start || null; v.first_close = v.first_close || null;
-      v.last4 = (v.last4 || '').replace(/\D/g, '').slice(-4) || null;
-      if (!!v.cycle_start !== !!v.first_close) throw new Error('改結帳日的兩個日期要一起填');
-      if (c) {
-        if (v.closing_day !== +c.closing_day || v.due_day !== (c.due_day == null ? null : +c.due_day)) v.last_settled = initialSettled(v);
-        await upd('cards', c.id, v);
-      } else await add('cards', { ...v, rewards: presetRewardsFor(v) || [], last_settled: initialSettled(v) });
-    },
-    onDelete: c && (async () => { await del('cards', c.id); S.cardOpen = null; S.transactions.forEach(t => { if (t.card_id === c.id) t.card_id = null; }); }),
-  });
-}
-
-/* ---------- 新增消費 ---------- */
-function formTxn(t, preset = {}) {
-  const d = t || preset;
-  const card = S.cards.find(c => c.id === (d.card_id || preset.card_id));
-  openForm({
-    title: t ? '編輯消費' : '新增消費',
-    data: { ...d, category: t ? catOf(t) : (d.category || guessCat(d.merchant)), pay: d.pay || (t ? txnPay(t) : d.source === 'shortcut' ? 'applepay' : 'card'),
-      date: ymd(new Date(d.txn_at || Date.now())), overseas: d.fee != null ? num(d.fee) > 0 : (d.currency && d.currency !== 'TWD'), settled: !!d.settled_cycle },
-    fields: [
-      { k: 'date', label: '消費日期', type: 'date', req: 1, half: true },
-      { k: 'amount', label: '消費金額', type: 'money', req: 1, half: true },
-      { k: 'category', label: '消費類別', type: 'chips', options: CATS.map(c => [c[0], c[1], true]) },
-      { k: 'merchant', label: '商家／用途', ph: '例：星巴克' },
-      { k: 'card_id', label: '信用卡', type: 'select', options: cardOptions() },
-      { k: 'currency', label: '幣別', type: 'select', options: CURRENCIES, def: 'TWD', more: true, half: true },
-      { k: 'pay', label: '支付方式', type: 'select', options: PAY_OPTIONS, def: 'card', more: true, half: true },
-      { k: 'amount_twd', label: '台幣入帳金額（外幣時填帳單實際金額）', type: 'number', more: true },
-      { k: 'overseas', label: '海外交易（加收國外交易手續費）', type: 'check', more: true },
-      ...(t ? [{ k: 'settled', label: '已扣款（不再計入未來帳單）', type: 'check', more: true }] : []),
-    ],
-    onSave: async v => {
-      const at = parseYmd(v.date); const old = t ? new Date(t.txn_at) : new Date(); at.setHours(old.getHours(), old.getMinutes());
-      const row = { card_id: v.card_id || null, merchant: v.merchant, amount: v.amount, currency: v.currency || 'TWD', pay: v.pay, category: v.category || null, txn_at: at.toISOString() };
-      row.amount_twd = row.currency === 'TWD' ? v.amount : (v.amount_twd ?? Math.round(toTWD(v.amount, row.currency) * 100) / 100);
-      if (!Number.isFinite(row.amount_twd)) throw new Error('抓不到匯率，請在「更多選項」填台幣金額');
-      const cd = S.cards.find(c => c.id === row.card_id);
-      row.fee = v.overseas && !isFeeRow(row) ? Math.round(Math.abs(row.amount_twd) * feeRate(cd) / 100) * Math.sign(row.amount_twd || 1) : 0;
-      if (t) {
-        if (v.settled && !t.settled_cycle) row.settled_cycle = 'manual';
-        if (!v.settled) row.settled_cycle = null;
-        await upd('transactions', t.id, row);
-      } else {
-        row.source = preset.source || 'manual'; row.card_label = preset.card_label || cd?.name || '';
-        if (cd?.last_settled && ymd(at) <= String(cd.last_settled).slice(0, 10)) { row.settled_cycle = 'past'; toast('這筆落在已扣款的週期，標記為已扣款'); }
-        await add('transactions', row);
-      }
-    },
-    onDelete: t && (() => del('transactions', t.id)),
-  });
-}
-
-/* ---------- 主題設定 ---------- */
-function themeTiles() {
-  const cur = document.documentElement.dataset.theme || 'champagne';
-  const names = { champagne: '香檳金', mist: '霧藍', oat: '燕麥奶茶', forest: '墨綠金' };
-  return `<div class="theme-tiles">${THEMES.map(([k]) => `<button class="tt tt-${k}${k === cur ? ' on' : ''}" data-act="theme" data-theme="${k}" aria-pressed="${k === cur}"><span class="tt-img"></span><span class="tt-name">${names[k]}</span>${k === cur ? '<span class="tt-check">✓</span>' : ''}</button>`).join('')}</div>`;
-}
-
-/* ================================================================
- * UI v3：羅盤儀表板、投資頁、可收合消費紀錄、四套混合色系
- * ================================================================ */
-const THEME_INFO = {
-  ivory: ['晨光象牙', 'IVORY', '象牙白・鎏金星盤'],
-  green: ['墨綠青金', 'GREEN', '松綠寶石・古典金'],
-  navy: ['夜藍銀月', 'NAVY', '午夜海藍・月光銀'],
-  purple: ['暮紫玫金', 'PURPLE', '煙燻紫晶・玫瑰金'],
-};
-THEMES.length = 0;
-THEMES.push(['ivory', '晨光象牙', ['#f8f5ee', '#b98a3e', '#2a2a33']], ['green', '墨綠青金', ['#1f332c', '#d4b06a', '#eef0e8']],
-  ['navy', '夜藍銀月', ['#1d2a3d', '#d8b878', '#edf0f6']], ['purple', '暮紫玫金', ['#2d2236', '#e0b394', '#f2ecf2']]);
-const OLD_THEME = { champagne: 'ivory', mist: 'ivory', oat: 'ivory', forest: 'green' };
-function applyTheme(t) {
-  t = OLD_THEME[t] || t;
-  const th = THEMES.find(x => x[0] === t);
-  const NORD = ['nordic', 'dusk'], de = document.documentElement;
-  de.classList.toggle('nord', NORD.includes(t)); de.classList.toggle('sky', !NORD.includes(t));
-  if (!th) { de.dataset.theme = t; return; } // 主題還沒載入完：先套上，不要覆寫存檔
-  de.dataset.theme = th[0];
-  try { localStorage.setItem('ac_theme', th[0]); } catch (_) { }
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', th[2][0]);
-  document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]')?.setAttribute('content', ['ivory', 'nordic'].includes(th[0]) ? 'default' : 'black-translucent');
-}
-function themeTiles() {
-  const cur = document.documentElement.dataset.theme || 'ivory';
-  return `<div class="theme-tiles">${THEMES.map(([k]) => { const [n, en, d] = THEME_INFO[k]; return `<button class="tt tt-${k}${k === cur ? ' on' : ''}" data-act="theme" data-theme="${k}" aria-pressed="${k === cur}">
-      <span class="tt-img"><span class="tt-orb"></span></span><span class="tt-name">${n}<small>${en}</small></span><span class="tt-desc">${d}</span>${k === cur ? '<span class="tt-check">✓</span>' : ''}</button>`; }).join('')}</div>`;
-}
-
-/* ---------- 01 羅盤儀表板 ---------- */
-function compassDial(t) {
-  const P = (r, a) => [r * Math.cos(a * DEG), r * Math.sin(a * DEG)];
-  const f = n => n.toFixed(1);
-  let ticks = '';
-  for (let i = 0; i < 72; i++) {
-    const a = i * 5 - 90, major = i % 9 === 0, mid = i % 3 === 0;
-    const [x0, y0] = P(major ? 128 : mid ? 133 : 136, a), [x1, y1] = P(140, a);
-    ticks += `<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" class="ck${major ? ' M' : ''}"/>`;
-  }
-  // 資產比例環：銀行（左上）→ 投資（右上）→ 其他（右下）；負債另成內環
-  const segs = [[t.bankOnly, 'var(--c-bank)'], [t.invest, 'var(--c-stock)'], [t.other, 'var(--c-recv)']].filter(x => x[0] > 0);
-  const tot = sum(segs, x => x[0]) || 1;
-  let a0 = -90, ring = '';
-  for (const [v, c] of segs) {
-    const sw = v / tot * 360;
-    ring += sw >= 359.5 ? `<circle r="112" class="cr" style="stroke:${c}"/>` : `<path d="${arcPath(112, a0 + 1.2, a0 + sw - 1.2)}" class="cr" style="stroke:${c}"/>`;
-    a0 += sw;
-  }
-  if (!segs.length) ring = '<circle r="112" class="cr empty"/>';
-  const dsw = t.gross > 0 ? Math.min(359, (t.debt + t.liab) / t.gross * 360) : 0;
-  const debt = dsw > .5 ? `<path d="${arcPath(97, -90, -90 + dsw)}" class="cr thin" style="stroke:var(--c-debt)"/>` : '';
-  const star = (len, w, rot, cls) => `<g transform="rotate(${rot})"><path d="M0 ${-len} L${w} 0 L0 0Z" class="${cls} a"/><path d="M0 ${-len} L${-w} 0 L0 0Z" class="${cls} b"/></g>`;
-  let rose = '';
-  for (const r of [45, 135, 225, 315]) rose += star(52, 9, r, 'rs2');
-  for (const r of [0, 90, 180, 270]) rose += star(84, 13, r, 'rs1');
-  const anim = !S.compassSwept && !reduceMotion() ? '<animateTransform attributeName="transform" type="rotate" from="-40" to="0" dur="1.6s" calcMode="spline" keyTimes="0;1" keySplines=".2 .9 .25 1" fill="freeze"/>' : '';
-  S.compassSwept = true;
-  const lbl = [['N', 0, -150], ['E', 150, 0], ['S', 0, 150], ['W', -150, 0]].map(([s, x, y]) => `<text x="${x}" y="${y}" class="cl">${s}</text>`).join('');
-  return `<svg class="compass2" viewBox="-165 -165 330 330" role="img" aria-label="資產羅盤：外環是資產比例，內側紅線是負債">
-    <defs><radialGradient id="cg" cx="50%" cy="45%" r="60%"><stop offset="0" style="stop-color:var(--panel)"/><stop offset="1" style="stop-color:var(--panel-2)"/></radialGradient>
-      <linearGradient id="gA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--fab-hi)"/><stop offset="1" style="stop-color:var(--fab)"/></linearGradient>
-      <linearGradient id="gB" x1="1" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--fab)"/><stop offset="1" style="stop-color:var(--fab-lo)"/></linearGradient></defs>
-    <circle r="146" fill="url(#cg)" class="cbase"/><circle r="140" class="cline"/><circle r="124" class="cline soft"/>
-    ${ticks}${lbl}${ring}${debt}
-    <circle r="86" class="cline soft"/><circle r="64" class="cline faint"/>
-    <g class="rose">${anim}${rose}<circle r="10" class="rc"/><circle r="4" class="rc2"/></g>
-  </svg>`;
-}
-function scenery() {
-  return `<svg class="scenery" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
-    <path d="M0 80 L40 60 L70 72 L110 40 L150 66 L190 50 L230 70 L270 38 L320 64 L360 52 L400 70 L400 120 L0 120Z" class="m1"/>
-    <path d="M0 96 L50 78 L95 92 L140 70 L185 90 L240 74 L290 92 L340 80 L400 94 L400 120 L0 120Z" class="m2"/>
-    <path d="M0 108 Q100 96 200 106 T400 104 L400 120 L0 120Z" class="m3"/>
-    <g class="lh"><path d="M328 70 l4 -22 h4 l4 22z"/><rect x="331" y="44" width="6" height="4"/></g>
-  </svg>`;
-}
-VIEWS.overview = () => {
-  const t = splitTotals();
-  const range = S.range || 30;
-  const since = new Date(); since.setDate(since.getDate() - range);
-  const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.net) }));
-  if (pts.length) pts[pts.length - 1] = { v: t.net }; else pts.push({ v: t.net });
-  const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
-  const pctOf = v => t.gross > 0 ? v / t.gross * 100 : 0;
-  const cardDebt = t.debt + t.liab;
-  const node = (pos, ic, name, v, p, act, extra = '') => `<button class="cnode ${pos}" data-act="${act}" ${extra}><span class="cn-ic">${svgI(ic)}</span><span class="cn-t">${name}</span><span class="cn-p ${p < 0 ? 'neg' : ''}">${p < 0 ? '' : ''}${p.toFixed(1)}%</span></button>`;
-  const states = S.cards.map(c => ({ c, st: cardState(c) })).sort((a, b) => a.st.next.date - b.st.next.date);
-  const recent = S.transactions.slice().sort((a, b) => b.txn_at.localeCompare(a.txn_at));
-  const rewTotal = sum(S.cards, c => cycleReward(c, cardState(c).open.end).total);
-  const open = !!S.mapOpen;
-  return `
-  <section class="dash">
-    <div class="dash-head">
-      <span class="lbl">總資產淨值</span>
-      <div class="dash-num">${money(t.net)}</div>
-      <div class="hero2-chg ${chg >= 0 ? 'pos' : 'neg'}">${svgI(chg >= 0 ? 'up' : 'arrowDown', 'ti')}${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% <span>${range === 30 ? '本月' : range === 90 ? '近三個月' : '今年'}變動</span>
-        <span class="sel mini"><select data-range>${[[30, '近一個月'], [90, '近三個月'], [365, '近一年']].map(([v, l]) => `<option value="${v}" ${v === range ? 'selected' : ''}>${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></div>
-    </div>
-    <div class="dial-box">
-      ${compassDial(t)}
-      ${node('nw', 'bank', '銀行', t.bankOnly, pctOf(t.bankOnly), 'goto', 'data-tab="bank"')}
-      ${node('ne', 'chart', '投資', t.invest, pctOf(t.invest), 'goto', 'data-tab="invest"')}
-      ${node('sw', 'card', '信用卡', cardDebt, -pctOf(cardDebt), 'goto', 'data-tab="cards"')}
-      ${node('se', 'box', '其他', t.other, pctOf(t.other), 'acc-other')}
-    </div>
-    ${scenery()}
-    <button class="explore" data-act="map-toggle" aria-expanded="${open}">${open ? '收起資產地圖' : '探索你的資產地圖'}</button>
-  </section>
-  ${open ? `<section class="map-detail">
-    <div class="tiles">
-      ${[['bank', '銀行帳戶', t.bankOnly, 'var(--c-bank)', 'bank'], ['chart', '投資資產', t.invest, 'var(--c-stock)', 'invest'], ['card', '信用卡未繳', -cardDebt, 'var(--c-debt)', 'cards'], ['box', '其他資產', t.other, 'var(--c-recv)', 'bank']].map(([ic, n, v, c, tab]) => `<button class="tile" data-act="goto" data-tab="${tab}" style="--tc:${c}"><div class="tile-h">${svgI(ic)}<span>${n}</span></div><b class="${v < 0 ? 'neg' : ''}">${money(v)}</b><span class="tp">${Math.abs(pctOf(Math.abs(v))).toFixed(1)}%</span></button>`).join('')}
-    </div>
-    <div class="panel trend-card"><div class="tp-head"><h4>淨值走勢</h4></div><div class="area-box sm">${areaChart(pts)}</div></div>
-  </section>` : ''}
-  ${rewTotal > 0 ? `<button class="rew-strip" data-act="recommend"><span>本期預估回饋</span><b>${money(rewTotal)}</b><small>刷哪張最划算 ›</small></button>` : ''}
-  ${collapsible('ov-due', '接下來的扣款', `${states.length} 張卡・合計 ${money(sum(states, x => x.st.next.amount))}`, states.map(({ c, st }) => `<div class="row click" data-act="open-card" data-id="${c.id}">
-      <div class="date-glyph" style="--cc:${esc(c.color || '#b8893a')}"><b>${st.next.date.getDate()}</b><small>${st.next.date.getMonth() + 1} 月</small></div>
-      <div class="grow"><div class="title">${esc(c.name)}</div><div class="meta one">${st.next.days === 0 ? '<span class="warn">今天扣款</span>' : `${st.next.days} 天後扣款`}・${st.next.final ? '帳單已出' : '累計中'}</div></div>
-      <div class="right amt-sm">${money(st.next.amount)}</div></div>`), true, 5)}
-  ${collapsible('ov-recent', '最近刷卡', recent.length ? `${recent.length} 筆` : '', recent.slice(0, 30).map(x => txnRow(x)), false, 3)}`;
-};
-/* 可收合清單：預設顯示前 n 筆，點標題展開／收起 */
-function collapsible(key, title, sub, rows, defOpen = false, preview = 3) {
-  S.fold ||= {};
-  const open = S.fold[key] ?? defOpen;
-  const shown = open ? rows : rows.slice(0, preview);
-  return `<section class="fold${open ? ' open' : ''}">
-    <button class="fold-h" data-act="fold" data-k="${key}" aria-expanded="${open}"><span class="fold-t">${esc(title)}</span><span class="fold-s">${sub}</span>${svgI('down', 'fold-ic')}</button>
-    <div class="fold-b">${shown.join('') || '<div class="empty">還沒有紀錄</div>'}
-      ${!open && rows.length > preview ? `<button class="fold-more" data-act="fold" data-k="${key}">顯示全部 ${rows.length} 筆</button>` : ''}</div></section>`;
-}
-
-/* ---------- 04 投資 ---------- */
-VIEWS.invest = () => {
-  const sr = stockRows(), cr = cryptoRows();
-  const stockV = sum(sr, r => r.value || 0), stockCost = sum(sr, r => r.costTotal || 0);
-  const cryptoV = sum(cr, r => r.value || 0);
-  const cryptoChg = cryptoV ? sum(cr, r => (r.value || 0) * (r.chg || 0)) / cryptoV : 0;
-  const total = stockV + cryptoV;
-  const range = S.invRange || 365;
-  const since = new Date(); if (range < 9999) since.setDate(since.getDate() - range); else since.setFullYear(2000);
-  const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.stock) + num(s.crypto) }));
-  if (pts.length) pts[pts.length - 1] = { v: total }; else pts.push({ v: total });
-  const chg = pts[0].v ? (total - pts[0].v) / pts[0].v * 100 : 0;
-  const stockPct = stockCost ? (stockV - stockCost) / stockCost * 100 : 0;
-  const sub = S.invSub === 'crypto' ? 'crypto' : 'stocks';
-  const group = (k, ic, name, v, p, pl) => `<button class="inv-row${sub === k ? ' on' : ''}" data-act="inv" data-sub="${k}">
-      <span class="inv-ic ${k}">${ic}</span><span class="grow"><b>${name}</b><span>${money(v)}</span></span>
-      <span class="inv-p ${p >= 0 ? 'pos' : 'neg'}">${p >= 0 ? '+' : ''}${p.toFixed(1)}%<small>${pl}</small></span>${svgI('chev', 'chev')}</button>`;
-  const parts = [{ n: '台股', v: stockV, c: 'var(--c-stock)' }, { n: '加密貨幣', v: cryptoV, c: 'var(--c-crypto)' }];
-  return `<section class="hero2 inv-hero">
-      <span class="lbl">投資資產總額</span>
-      <div class="hero2-num">${money(total)}</div>
-      <div class="hero2-chg ${chg >= 0 ? 'pos' : 'neg'}">${svgI(chg >= 0 ? 'up' : 'arrowDown', 'ti')}${chg >= 0 ? '+' : ''}${chg.toFixed(1)}% <span>${{ 30: '近一個月', 90: '近三個月', 180: '近半年', 365: '本年', 99999: '全部期間' }[range]}報酬</span></div>
-      <div class="area-box">${areaChart(pts)}</div>
-      <div class="rchips">${[[30, '1M'], [90, '3M'], [180, '6M'], [365, '1Y'], [99999, 'ALL']].map(([v, l]) => `<button class="${v === range ? 'on' : ''}" data-act="inv-range" data-v="${v}">${l}</button>`).join('')}</div>
-    </section>
-    <div class="inv-rows">
-      ${group('stocks', svgI('chart'), '台股', stockV, stockPct, '未實現')}
-      ${group('crypto', '₿', '加密貨幣', cryptoV, cryptoChg, '24h')}
-    </div>
-    ${total > 0 ? `<section class="panel dist"><h4>資產配置</h4><div class="dist-body">${donut(parts, shortMoney(total), '投資資產')}<div class="dist-leg">${parts.map(p => `<div><i style="background:${p.c}"></i><span>${p.n}</span><b>${(p.v / total * 100).toFixed(1)}%</b></div>`).join('')}</div></div></section>` : ''}
-    <div class="actions"><button class="btn outline" data-act="add-invest">＋ 新增投資項目</button></div>
-    <div class="inv-detail">${VIEWS[sub]()}</div>`;
-};
-function openAddInvest() {
-  const m = $('#modal');
-  m.innerHTML = `<div class="sheet"><span class="grab"></span><div class="sheet-head"><h3>新增投資項目</h3><button type="button" class="x" data-close>×</button></div>
-    <div class="menu"><button data-act="add-stock">台股買進</button><button data-act="add-hold">加密貨幣（交易所持倉）</button><button data-act="add-wallet">鏈上錢包地址</button></div></div>`;
-  m.hidden = false;
-  m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) { m.hidden = true; m.innerHTML = ''; } };
-}
-
-/* ---------- 信用卡詳細：消費紀錄可收合 ---------- */
-const _cardDetailView = cardDetailView;
-cardDetailView = function (c) {
-  const html = _cardDetailView(c);
-  S.fold ||= {};
-  const key = 'card-' + c.id, open = S.fold[key] ?? false;
-  return html.replace('<section class="panel txn-panel">', `<section class="panel txn-panel fold-panel${open ? ' open' : ''}" data-fold="${key}">`)
-    .replace(/<div class="tp-head"><h4>([^<]+)<\/h4>/, (m, h) => `<div class="tp-head"><button class="fold-h inline" data-act="fold" data-k="${key}" aria-expanded="${open}"><span class="fold-t">${h}</span><span class="fold-s" data-count></span>${svgI('down', 'fold-ic')}</button>`);
-};
-function applyCardFold() {
-  document.querySelectorAll('.fold-panel').forEach(p => {
-    const open = p.classList.contains('open');
-    const rows = [...p.querySelectorAll('.txn-list .txn')];
-    const vis = rows.filter(r => !r.dataset.filtered);
-    const tot = sum(vis, r => num((r.querySelector('.amt-sm')?.textContent || '').replace(/[^\d.-]/g, '')));
-    const cnt = p.querySelector('[data-count]'); if (cnt) cnt.textContent = `${vis.length} 筆・${S.hide ? '••••' : money(tot)}`;
-    vis.forEach((r, i) => r.hidden = !open && i >= 3);
-    let more = p.querySelector('.fold-more');
-    if (!open && vis.length > 3) { if (!more) { more = document.createElement('button'); more.className = 'fold-more'; more.dataset.act = 'fold'; more.dataset.k = p.dataset.fold; p.querySelector('.txn-list').after(more); } more.textContent = `顯示全部 ${vis.length} 筆`; }
-    else more?.remove();
-    p.querySelectorAll('.tp-head .sel, .tp-head .icon-btn').forEach(x => x.hidden = !open);
-  });
-}
-const _filterTxnList = filterTxnList;
-filterTxnList = function () {
-  const q = ($('.txn-q')?.value || '').trim().toLowerCase(), cat = $('[data-catfilter]')?.value || '';
-  document.querySelectorAll('.txn-list .txn').forEach(r => { const hide = (q && !r.dataset.text.includes(q)) || (cat && r.dataset.cat !== cat); if (hide) r.dataset.filtered = '1'; else delete r.dataset.filtered; r.hidden = !!hide; });
-  applyCardFold();
-};
-
-/* ---------------- events ---------------- */
+/* ---------- 新動作與畫面外框 ---------- */
 document.addEventListener('click', async e => {
-  const tabBtn = e.target.closest('.tabs [data-tab]');
-  if (tabBtn) { if (tabBtn.dataset.tab === 'cards' && S.tab === 'cards') S.cardOpen = null; go(tabBtn.dataset.tab); return; }
-  const el = e.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return;
-  const id = el.dataset.id, act = el.dataset.act;
-  const find = t => S[t].find(x => x.id === id);
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act;
   try {
-    switch (act) {
-      case 'toggle-hide': S.hide = !S.hide; localStorage.setItem('ac_hide', S.hide ? '1' : '0'); render(); break;
-      case 'refresh': toast('更新中…'); await refreshAll(true); toast('已更新'); break;
-      case 'goto': go(el.dataset.tab); break;
-      case 'fab': openFab(); break;
-      case 'theme': applyTheme(el.dataset.theme); render(); break;
-      case 'recommend': openRecommend(); break;
-      case 'paid-bill': formPaidBill(find('cards')); break;
-      case 'import-txn': openImport(); break;
-      case 'add-recv': formRecv(); break;
-      case 'edit-recv': formRecv(find('receivables')); break;
-      case 'got-recv': e.stopPropagation(); formReceive(find('receivables')); break;
-      case 'add-liab': formLiab(); break;
-      case 'edit-liab': formLiab(find('liabilities')); break;
-      case 'preset-cards': await addPresetCards(true); render(); break;
-      case 'add-rule': formRule(S.cards.find(c => c.id === el.dataset.card)); break;
-      case 'edit-rule': formRule(S.cards.find(c => c.id === el.dataset.card), +el.dataset.i); break;
-      case 'toggle-rule': {
-        e.stopPropagation();
-        const c = S.cards.find(x => x.id === el.dataset.card); const rules = (c.rewards || []).slice();
-        rules[+el.dataset.i] = { ...rules[+el.dataset.i], on: rules[+el.dataset.i].on === false };
-        await upd('cards', c.id, { rewards: rules }); render(); break;
-      }
-      case 'preset-rules': {
-        const c = S.cards.find(x => x.id === el.dataset.card);
-        if ((c.rewards || []).length && !confirm('會覆蓋這張卡目前的回饋規則，確定？')) break;
-        await upd('cards', c.id, { rewards: presetRewardsFor(c) }); render(); toast('已套用建議回饋規則'); break;
-      }
-      case 'inv': S.invSub = el.dataset.sub; localStorage.setItem('ac_inv', S.invSub); render(); break;
-      case 'open-card': S.cardOpen = id; go('cards'); break;
-      case 'cards-home': S.cardOpen = null; render(); scrollTo(0, 0); break;
-      case 'card-step': { const i = S.cards.findIndex(c => c.id === S.cardOpen); S.cardOpen = S.cards[(i + (+el.dataset.d) + S.cards.length) % S.cards.length].id; render(); break; }
-      case 'transfer': formTransfer(); break;
-      case 'money-in-out': formMoney('in-out'); break;
-      case 'fold': { const k = el.dataset.k; S.fold ||= {}; S.fold[k] = !(S.fold[k] ?? ({ 'ov-due': true })[k] ?? false); render(); break; }
-      case 'map-toggle': S.mapOpen = !S.mapOpen; render(); break;
-      case 'acc-other': S.accTab = 'other'; go('bank'); break;
-      case 'inv-range': S.invRange = +el.dataset.v; render(); break;
-      case 'add-invest': openAddInvest(); break;
-      case 'money-set': formMoney('set'); break;
-      case 'acc-tab': S.accTab = el.dataset.t; render(); break;
-      case 'card-filter': S.cardFilter = el.dataset.f; render(); break;
-      case 'card-tab': S.cardTab = el.dataset.t; render(); break;
-      case 'card-more': openCardMore(find('cards')); break;
-      case 'add-liab-card': formLiab(null, { kind: 'installment', card_id: el.dataset.card }); break;
-      case 'txn-search': { const q = $('.txn-q'); q.hidden = !q.hidden; if (!q.hidden) q.focus(); else { q.value = ''; filterTxnList(); } break; }
-      case 'fab-acc': formMoney('in-out'); break;
-      case 'add-acc': formAccount(); break;
-      case 'edit-acc': formAccount(find('accounts')); break;
-      case 'adjust-acc': e.stopPropagation(); formAdjust(find('accounts')); break;
-      case 'add-card': formCard(); break;
-      case 'edit-card': formCard(find('cards')); break;
-      case 'add-txn': formTxn(null, { card_id: el.dataset.card || S.cards[0]?.id || '' }); break;
-      case 'edit-txn': formTxn(find('transactions')); break;
-      case 'add-stock': formStock(); break;
-      case 'edit-stock': formStock(find('stocks')); break;
-      case 'open-stock': openStock(el.dataset.code); break;
-      case 'buy-stock': { const r = stockRows().find(x => x.code === el.dataset.code); formStock(null, { code: r.code, name: r.name }); break; }
-      case 'merge-stock': await mergeStock(el.dataset.code); $('#modal').hidden = true; $('#modal').innerHTML = ''; render(); break;
-      case 'add-hold': formHolding(); break;
-      case 'edit-hold': formHolding(find('crypto_holdings')); break;
-      case 'add-wallet': formWallet(); break;
-      case 'edit-wallet': formWallet(find('wallets')); break;
-      case 'gen-token': if (!S.token || confirm('舊金鑰會失效，確定重新產生？')) await genToken(); break;
-      case 'copy-token': await navigator.clipboard.writeText(S.token); toast('已複製'); break;
-      case 'signout': await sb.auth.signOut(); location.reload(); break;
-      case 'seed': await seed(); break;
-      case 'export': {
-        const data = {}; TABLES.forEach(t => data[t] = S[t]);
-        const blob = new Blob([JSON.stringify({ app: 'asset-compass', at: new Date().toISOString(), data }, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `asset-compass-${todayStr()}.json`; a.click();
-        break;
-      }
-    }
-  } catch (err) { toast('出錯了：' + (err.message || err)); console.error(err); }
+    if (a === 'set-cycle') setCycleSheet(); else if (a === 'set-remind') setRemindSheet(); else if (a === 'set-goal') setGoalSheet();
+    else if (a === 'set-theme') setThemeSheet(); else if (a === 'set-backup') setBackupSheet(); else if (a === 'set-pin') setPinFlow();
+    else if (a === 'export-csv') exportCSV(); else if (a === 'about') aboutSheet(); else if (a === 'health-report') healthReport();
+  } catch (err) { toast('出錯了：' + (err.message || err)); }
 });
-document.addEventListener('change', e => {
-  if (e.target.matches('[data-range]')) { S.range = +e.target.value; render(); }
-  else if (e.target.matches('[data-accfilter]')) { S.accFilter = e.target.value; render(); }
-  else if (e.target.matches('[data-catfilter]')) filterTxnList();
-});
-document.addEventListener('input', e => { if (e.target.matches('.txn-q')) filterTxnList(); });
-document.addEventListener('change', async e => {
-  if (e.target.dataset.act !== 'import') return;
-  try {
-    const j = JSON.parse(await e.target.files[0].text());
-    if (!j.data || !confirm('匯入會覆蓋這個瀏覽器的資料，確定？')) return;
-    local.save(j.data); await loadAll(); await refreshAll(true); toast('已匯入');
-  } catch (err) { toast('匯入失敗：' + err.message); }
-});
-
-/* ---------------- boot ---------------- */
-async function refreshAll(force) {
-  await loadFX(force);
-  await Promise.all([loadQuotes(force), loadWallets(force)]);
-  await loadPrices(force);
-  render();
-  await saveSnapshot();
-}
-
-async function startApp() {
-  $('#auth').hidden = true; $('#app').hidden = false;
-  await loadAll();
-  await addPresetCards().catch(e => { console.warn('preset', e); toast('預設信用卡建立失敗：' + (e.message || e), 6000); });
-  render();
-  await loadToken().catch(() => { });
-  await loadFX();
-  await autoFees().catch(e => console.warn('fees', e));
-  await runInstallments().catch(e => console.warn('installments', e));
-  await runSettlements();
-  render();
-  handleHash();
-  await refreshAll(false);
-}
-
-async function boot() {
-  applyTheme(localStorage.getItem('ac_theme') || 'ivory');
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-  if (!CLOUD) return startApp();
-  sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } });
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) { user = session.user; return startApp(); }
-  $('#auth').hidden = false;
-  const form = $('#authForm'), errEl = $('#authErr');
-  const go = async signup => {
-    errEl.textContent = '';
-    const email = form.email.value.trim(), password = form.password.value;
-    if (!email || password.length < 6) { errEl.textContent = '請填 Email 與至少 6 碼密碼'; return; }
-    const { data, error } = signup ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
-    if (error) { errEl.textContent = error.message; return; }
-    if (!data.session) { errEl.textContent = '註冊成功，請到信箱點確認連結後再登入。'; return; }
-    user = data.session.user; startApp();
-  };
-  form.onsubmit = e => { e.preventDefault(); go(false); };
-  $('#signupBtn').onclick = () => go(true);
-}
-
-window.addEventListener('hashchange', handleHash);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#app').hidden) { loadAll().then(runInstallments).then(runSettlements).then(() => refreshAll(false)).catch(() => { }); } });
-boot();
-
-/* ================================================================
- * 永夜圖書館主題：頁首小標、閱覽證、預設套用
- * ================================================================ */
-THEME_INFO.library = ['永夜圖書館', 'LIBRARY', '燭光暗木・古金典藏'];
-THEMES.unshift(['library', '永夜圖書館', ['#0e0a07', '#c9a46a', '#efe3cb']]);
-try { if (!localStorage.getItem('ac_lib_v1')) { localStorage.setItem('ac_lib_v1', '1'); applyTheme('library'); } } catch (_) { }
-const LIB_HEAD = {
-  overview: ['01', 'Overview · Compass Hall', '資產總覽'],
-  bank: ['02', 'Accounts · Treasury', '帳戶'],
-  cards: ['03', 'Cards · Ledger Room', '信用卡'],
-  invest: ['04', 'Investments · Three Worlds', '投資'],
-  settings: ['05', 'Settings · Archive', '設定'],
-};
-function libHead(tab) {
-  const h = LIB_HEAD[tab]; if (!h) return '';
-  if (tab === 'cards' && S.cardOpen) return '';
-  return `<header class="lib-head"><span class="eb">${h[0]} / ${h[1]}</span><span class="ttl">${h[2]}</span><span class="lib-rule">✦</span></header>`;
-}
-function libEmblem() {
-  let t = '';
-  for (let i = 0; i < 32; i++) { const a = i * 11.25 * Math.PI / 180, r0 = i % 4 ? 31 : 28; t += `<line x1="${(37 + r0 * Math.sin(a)).toFixed(1)}" y1="${(37 - r0 * Math.cos(a)).toFixed(1)}" x2="${(37 + 33 * Math.sin(a)).toFixed(1)}" y2="${(37 - 33 * Math.cos(a)).toFixed(1)}"/>`; }
-  return `<svg viewBox="0 0 74 74" aria-hidden="true" fill="none" stroke="#c9a46a" stroke-width=".8">
-    <circle cx="37" cy="37" r="35"/><circle cx="37" cy="37" r="26" stroke-opacity=".5"/>${t}
-    <path d="M37 9 41 33 65 37 41 41 37 65 33 41 9 37 33 33Z" fill="#c9a46a" fill-opacity=".9" stroke="none"/>
-    <path d="M37 9 39 35 37 37ZM65 37 39 39 37 37ZM37 65 35 39 37 37ZM9 37 35 35 37 37Z" fill="#5a3d1c" stroke="none" opacity=".55"/>
-    <path d="M37 19 39.5 34.5 55 37 39.5 39.5 37 55 34.5 39.5 19 37 34.5 34.5Z" transform="rotate(45 37 37)" fill="#8a6d43" stroke="none" opacity=".8"/>
-    <circle cx="37" cy="37" r="3" fill="#1a120a" stroke="#e3c58e"/></svg>`;
-}
-const _settingsView = VIEWS.settings;
-VIEWS.settings = () => _settingsView() + `<section class="lib-card">${libEmblem()}<div><span class="eb">READER ACCESS</span><span class="t">妳的閱覽證</span><span class="sig">Rysena Veylorn</span><span class="h">@auccelis</span></div></section>`;
 const _render0 = render;
 render = function () {
   _render0();
-  const v = $('#view');
-  if (v && !v.querySelector(':scope > .lib-head')) v.insertAdjacentHTML('afterbegin', libHead(S.tab));
+  const n = todayReminders().length;
+  $('#bellBtn').innerHTML = svgI('bell') + (n ? '<span class="dot"></span>' : '');
+  $('#bellBtn').classList.toggle('on', S.tab === 'remind');
 };
-
-/* ================================================================
- * 夜苑鎏金 VERDANT：上方分頁、日期、資產走勢、放射式記帳選單
- * ================================================================ */
-THEME_INFO.verdant = ['星象午夜', 'ASTRAL', '午夜墨黑・松綠・香檳金'];
-THEMES.unshift(['verdant', '星象午夜', ['#111B20', '#C5A572', '#F1E9DB']]);
-try { if (!localStorage.getItem('ac_ver_v1')) { localStorage.setItem('ac_ver_v1', '1'); localStorage.setItem('ac_lib_v1', '1'); applyTheme('verdant'); } } catch (_) { }
-const isVer = () => true;   // 所有主題都用星象版面
-const isStar = () => true;
-function verChrome() {
-  const top = $('header.top');
-  if (top && !$('.toptabs')) {
-    top.insertAdjacentHTML('afterend', `<div class="hdate"></div><nav class="toptabs" aria-label="分頁">${[['overview', '總覽'], ['bank', '帳戶'], ['cards', '信用卡'], ['invest', '投資']].map(([k, l]) => `<button data-act="goto" data-tab="${k}">${l}</button>`).join('')}</nav>`);
-  }
-  const d = new Date(), wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
-  const hd = $('.hdate'); if (hd) hd.textContent = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}  ${wd}`;
-  document.querySelectorAll('.toptabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
-}
-function verTrend() {
-  const t = splitTotals(), range = S.range || 30;
-  const since = new Date(); since.setDate(since.getDate() - range);
-  const pts = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(s => ({ v: num(s.net) }));
-  if (pts.length) pts[pts.length - 1] = { v: t.net }; else pts.push({ v: t.net });
-  const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
-  return `<section class="panel ver-trend"><div class="tp-head"><h4>資產走勢</h4><span class="vt-r"><span class="meta ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span><span class="sel mini"><select data-range>${[[30, '近一個月'], [90, '近三個月'], [365, '近一年']].map(([v, l]) => `<option value="${v}" ${v === range ? 'selected' : ''}>${l}</option>`).join('')}</select>${svgI('down', 'sel-ic')}</span></span></div><div class="area-box sm">${areaChart(pts)}</div></section>`;
-}
-const _ovView = VIEWS.overview;
-VIEWS.overview = () => {
-  const h = _ovView();
-  if (!isVer() || S.mapOpen) return h;
-  const k = h.indexOf('</section>');
-  return k < 0 ? h : h.slice(0, k + 10) + verTrend() + h.slice(k + 10);
-};
-const _renderL = render;
-render = function () { _renderL(); verChrome(); };
-
-/* 放射式記帳選單（夜苑主題） */
-const _openFabSheet = openFab;
-function closeRadial() { const r = $('.fab-radial'); if (r) r.remove(); document.body.classList.remove('fab-open'); }
-openFab = function () {
-  if (!isVer()) return _openFabSheet();
-  if ($('.fab-radial')) return closeRadial();
-  const items = [['fab-acc', 'bank', '帳戶', -118, -46], ['add-txn', 'card', '記帳', -62, -128], ['transfer', 'swap', '轉帳', 62, -128], ['add-invest', 'chart', '投資', 118, -46]];
-  document.body.insertAdjacentHTML('beforeend', `<div class="fab-radial">${items.map(([a, ic, l, x, y]) => `<button class="fr-btn" data-act="${a}" style="--x:${x}px;--y:${y}px">${svgI(ic)}<span>${l}</span></button>`).join('')}<button class="fr-more" data-act="fab-sheet">更多記帳方式</button></div>`);
-  document.body.classList.add('fab-open');
-  const r = $('.fab-radial');
-  requestAnimationFrame(() => r.classList.add('show'));
-  r.addEventListener('click', e => { if (!e.target.closest('[data-act]') || e.target.closest('[data-act]')) setTimeout(closeRadial, 0); });
-};
-document.addEventListener('click', e => { if (e.target.closest('[data-act="fab-sheet"]')) { closeRadial(); _openFabSheet(); } });
-
-/* ---------- 夜苑：金屬星盤 ---------- */
-const _compassDialStd = compassDial;
-compassDial = function (t) {
-  if (!isVer()) return _compassDialStd(t);
-  const P = (r, a) => [r * Math.cos(a * DEG), r * Math.sin(a * DEG)], f = n => n.toFixed(1);
-  let ticks = '';
-  for (let i = 0; i < 180; i++) {
-    const a = i * 2, M = i % 15 === 0, m = i % 5 === 0;
-    const [x0, y0] = P(M ? 141 : m ? 145 : 148, a), [x1, y1] = P(151, a);
-    ticks += `<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" class="vt${M ? ' M' : m ? ' m' : ''}"/>`;
-  }
-  const segs = [[t.bankOnly, 'var(--c-bank)'], [t.invest, 'var(--c-stock)'], [t.other, 'var(--c-recv)']].filter(x => x[0] > 0);
-  const tot = sum(segs, x => x[0]) || 1;
-  let a0 = -90, ring = '';
-  for (const [v, c] of segs) {
-    const sw = v / tot * 360;
-    ring += sw >= 359.5 ? `<circle r="128" class="vr" style="stroke:${c}"/>` : `<path d="${arcPath(128, a0 + 1.5, a0 + sw - 1.5)}" class="vr" style="stroke:${c}"/>`;
-    a0 += sw;
-  }
-  const dsw = t.gross > 0 ? Math.min(359, (t.debt + t.liab) / t.gross * 360) : 0;
-  const debt = dsw > .5 ? `<path d="${arcPath(117, -90, -90 + dsw)}" class="vr debt"/>` : '';
-  const star = (len, w, rot) => `<g transform="rotate(${rot})"><path d="M0 ${-len} L${w} 0 L0 0Z" fill="url(#vgA)"/><path d="M0 ${-len} L${-w} 0 L0 0Z" fill="url(#vgB)"/></g>`;
-  let rose = '';
-  for (const r of [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5]) rose += star(70, 5, r);
-  for (const r of [45, 135, 225, 315]) rose += star(100, 9, r);
-  for (const r of [0, 90, 180, 270]) rose += star(138, 12, r);
-  let stars = '';
-  const rnd = (s => () => (s = (s * 9301 + 49297) % 233280) / 233280)(7);
-  for (let i = 0; i < 26; i++) { const a = rnd() * 360, r = 30 + rnd() * 75, [x, y] = P(r, a); stars += `<circle cx="${f(x)}" cy="${f(y)}" r="${(rnd() * 1.1 + .4).toFixed(2)}"/>`; }
-  return `<svg class="vdial" viewBox="-170 -170 340 340" role="img" aria-label="資產羅盤：外環是資產比例，內側紅線是負債">
-    <defs>
-      ${isStar() ? `<linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:rgb(var(--sk-hi))"/><stop offset=".28" style="stop-color:rgb(var(--sk-acc))"/><stop offset=".5" style="stop-color:rgb(var(--sk-hi))"/><stop offset=".75" style="stop-color:rgb(var(--sk-lo))"/><stop offset="1" style="stop-color:rgb(var(--sk-hi))"/></linearGradient>
-      <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-hi))"/><stop offset="1" style="stop-color:rgb(var(--sk-acc))"/></linearGradient>
-      <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-lo))"/><stop offset="1" style="stop-color:rgb(var(--sk-d2))"/></linearGradient>
-      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" style="stop-color:rgb(var(--sk-d2))"/><stop offset=".7" style="stop-color:rgb(var(--sk-d1))"/><stop offset="1" style="stop-color:rgb(var(--sk-d0))"/></radialGradient>
-      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" style="stop-color:rgb(var(--sk-d1))"/><stop offset="1" style="stop-color:rgb(var(--sk-d0))"/></radialGradient>
-      <linearGradient id="vneedle" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-hi))"/><stop offset=".5" style="stop-color:rgb(var(--sk-hi))"/><stop offset=".5" style="stop-color:rgb(var(--sk-lo))"/><stop offset="1" style="stop-color:rgb(var(--sk-tx))"/></linearGradient>`
-      : `<linearGradient id="vgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:rgb(var(--sk-acc))"/><stop offset=".5" style="stop-color:rgb(var(--sk-acc))"/><stop offset="1" style="stop-color:rgb(var(--sk-acc))"/></linearGradient>
-      <linearGradient id="vgA" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-hi))"/><stop offset="1" style="stop-color:rgb(var(--sk-acc))"/></linearGradient>
-      <linearGradient id="vgB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" style="stop-color:rgb(var(--sk-lo))"/><stop offset="1" style="stop-color:rgb(var(--sk-d2))"/></linearGradient>
-      <radialGradient id="vface" cx="50%" cy="42%" r="62%"><stop offset="0" style="stop-color:rgb(var(--sk-d2))"/><stop offset="1" style="stop-color:rgb(var(--sk-d1))"/></radialGradient>
-      <radialGradient id="vcore" cx="50%" cy="38%" r="65%"><stop offset="0" style="stop-color:rgb(var(--sk-d1))"/><stop offset="1" style="stop-color:rgb(var(--sk-d1))"/></radialGradient>`}
-      <filter id="vglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    </defs>
-    <circle r="166" fill="none" style="stroke:rgba(var(--sk-hi),.18)" stroke-width="8" filter="url(#vglow)"/>
-    <circle r="160" fill="url(#vface)" stroke="url(#vgold)" stroke-width="2"/>
-    <circle r="154" fill="none" stroke="url(#vgold)" stroke-width=".9" opacity=".8"/>
-    ${ticks}
-    <circle r="138" fill="none" stroke="url(#vgold)" stroke-width="1.4"/>
-    <g class="vorbit"><ellipse rx="150" ry="58" transform="rotate(28)"/><ellipse rx="150" ry="58" transform="rotate(-28)"/><ellipse rx="150" ry="58" transform="rotate(90)"/></g>
-    <circle r="128" class="vtrack"/>${ring}${debt}
-    <circle r="110" fill="none" stroke="url(#vgold)" stroke-width="1.1"/>
-    <g class="vstars">${stars}</g>
-    <g class="vrose" opacity=".5">${rose}</g>
-    <circle r="88" fill="url(#vcore)" stroke="url(#vgold)" stroke-width="1.6"/>
-    <circle r="82" fill="none" style="stroke:rgba(var(--sk-hi),.45)" stroke-width=".7"/>
-    <circle r="82" fill="none" style="stroke:rgba(var(--sk-hi),.55)" stroke-width="3" stroke-dasharray=".8 6.2"/>
-    ${isStar() ? `<g class="vneedle"><path d="M0 -206 L7 -150 L0 -92 L-7 -150Z" fill="url(#vneedle)"/><path d="M0 206 L7 150 L0 92 L-7 150Z" fill="url(#vneedle)"/>
-      <path d="M0 -226 L3 -212 L14 -208 L3 -204 L0 -190 L-3 -204 L-14 -208 L-3 -212Z" style="fill:rgb(var(--sk-hi))"/>
-      <circle cy="-150" r="3" style="fill:rgb(var(--sk-d1));stroke:rgb(var(--sk-hi))"/><circle cy="150" r="3" style="fill:rgb(var(--sk-d1));stroke:rgb(var(--sk-hi))"/></g>` : ''}
-  </svg>`;
-};
-const _ovView2 = VIEWS.overview;
-VIEWS.overview = () => {
-  let h = _ovView2();
-  if (!isVer()) return h;
-  const t = splitTotals(), range = S.range || 30;
-  const since = new Date(); since.setDate(since.getDate() - range);
-  const snaps = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  const first = snaps.length ? num(snaps[0].net) : t.net, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
-  const center = `<div class="vcenter"><span class="vc-l">總資產</span><b class="vc-n">${money(t.net)}</b><span class="vc-c ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span><span class="vc-s">${range === 30 ? '本月' : range === 90 ? '近三個月' : '近一年'}變動</span></div>`;
-  return h.replace('<div class="dial-box">', '<div class="dial-box">' + center);
-};
-
-/* ---------- 星圖秘境（照設計稿） ---------- */
-THEME_INFO.starmap = ['星圖秘境', 'STARMAP', '星空羅盤・鎏金描邊'];
-THEMES.unshift(['starmap', '星圖秘境', ['#0d181a', '#d9b878', '#f1ece0']]);
-try { if (!localStorage.getItem('ac_star_v1')) { localStorage.setItem('ac_star_v1', '1'); applyTheme('starmap'); } } catch (_) { }
+applyTheme();
+const _boot0 = boot;
+boot = async function () { if (SET.pin && !boot._unlocked) { await lockScreen(); boot._unlocked = true; } return _boot0(); };
 
 
 /* ================================================================
- * 星象 v5：設計稿總覽（大圓節點、四向金針、新月與葉枝、月份走勢）
+ * v1.2：顏色自訂、首頁區塊排列、字體與大小
  * ================================================================ */
-const _dialV4 = compassDial;
-compassDial = function (t) {
-  const P = (r, a) => [r * Math.cos(a * DEG), r * Math.sin(a * DEG)], f = n => n.toFixed(1);
-  const C = k => `rgb(var(--sk-${k}))`, A = (k, a) => `rgba(var(--sk-${k}),${a})`;
-  let ticks = '';
-  for (let i = 0; i < 120; i++) { const a = i * 3, M = i % 10 === 0; const [x0, y0] = P(M ? 152 : 156, a), [x1, y1] = P(160, a); ticks += `<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}" style="stroke:${A('acc', M ? .8 : .4)};stroke-width:${M ? 1.4 : .7}"/>`; }
-  const segs = [[t.bankOnly, 'var(--c-bank)'], [t.invest, 'var(--c-stock)'], [t.other, 'var(--c-recv)']].filter(x => x[0] > 0);
-  const tot = sum(segs, x => x[0]) || 1;
-  let a0 = -90, ring = '';
-  for (const [v, c] of segs) { const sw = v / tot * 360; ring += sw >= 359.5 ? `<circle r="116" class="v5r" style="stroke:${c}"/>` : `<path d="${arcPath(116, a0 + 2, a0 + sw - 2)}" class="v5r" style="stroke:${c}"/>`; a0 += sw; }
-  const dsw = t.gross > 0 ? Math.min(359, (t.debt + t.liab) / t.gross * 360) : 0;
-  const debt = dsw > .5 ? `<path d="${arcPath(104, -90, -90 + dsw)}" class="v5r debt"/>` : '';
-  // 葉枝：沿外圈左下、右上各一串
-  const leaf = (x, y, L, ang) => { const w = L * .36; return `<path transform="translate(${f(x)} ${f(y)}) rotate(${f(ang)})" d="M0 0 Q${f(L * .5)} ${f(-w)} ${f(L)} 0 Q${f(L * .5)} ${f(w)} 0 0Z M0 0 L${f(L * .92)} 0" class="v5leaf"/>`; };
-  let leaves = '';
-  for (const [from, to, side] of [[200, 248, 1], [20, 68, -1], [110, 140, 1], [290, 320, -1]]) {
-    let path = '';
-    for (let a = from; a <= to; a += 2) { const [x, y] = P(172, a); path += (path ? ' L' : 'M') + f(x) + ' ' + f(y); }
-    leaves += `<path d="${path}" class="v5stem"/>`;
-    for (let a = from + 4, i = 0; a <= to; a += 7, i++) { const [x, y] = P(172, a); leaves += leaf(x, y, 15 + (i % 3) * 3, a + 90 + (i % 2 ? 50 : -50) * side); }
+const COLOR_KEYS = [['plum', '主色', '按鈕、選取、圖示'], ['period', '經期', '月曆與週期環的經期'], ['fertile', '易孕期', '易孕期底色'], ['ovu', '排卵日', '排卵日標記'], ['luteal', '黃體期', '黃體期與健康'], ['bg', '背景', '整體底色（會取代葉子背景圖）']];
+const SWATCH = ['#5F8479', '#6F9488', '#7E6390', '#8C6389', '#4B5D9C', '#5E4F98', '#C9A46A', '#B4977A', '#D2955F', '#DB7B82', '#C65D5B', '#E9A3A6', '#8EA3CF', '#8AA3B2', '#B3A3D8', '#8DB3A2', '#9DB8A6', '#F7F3EA', '#F8F2F2', '#F8F7F3', '#0F1E21', '#1E1A2A', '#152B32'];
+const HOME_BLOCKS = [['ring', '週期圓環'], ['rhythm', '節奏（平均週期・下次月經・排卵日）'], ['remind', '今日提醒'], ['meds', '今日用藥'], ['recent', '近期紀錄'], ['intim', '親密紀錄']];
+const FONTS = {
+  title: [['serif', '宋體', '"Noto Serif TC", "Songti TC", serif'], ['yuji', '手寫 Yuji', '"Yuji Luna", "Noto Serif TC", serif'], ['sans', '黑體', '"Noto Sans TC", -apple-system, "PingFang TC", sans-serif']],
+  num: [['dm', '優雅襯線', '"DM Serif Display", "Noto Serif TC", Georgia, serif'], ['serif', '宋體', '"Noto Serif TC", Georgia, serif'], ['sans', '現代黑體', '"Noto Sans TC", -apple-system, system-ui, sans-serif']],
+  body: [['sans', '黑體', '"Noto Sans TC", -apple-system, "PingFang TC", system-ui, sans-serif'], ['serif', '宋體', '"Noto Serif TC", "Songti TC", serif']],
+};
+const SIZES = [[0.92, '小'], [1, '標準'], [1.1, '大'], [1.2, '特大']];
+SET.colors = SET.colors || { day: {}, night: {} };
+SET.font = { title: 'serif', num: 'dm', body: 'sans', ...(SET.font || {}) };
+SET.size = SET.size || 1;
+SET.home = (() => { const h = Array.isArray(SET.home) ? SET.home.filter(x => HOME_BLOCKS.some(b => b[0] === x.k)) : []; for (const [k] of HOME_BLOCKS) if (!h.some(x => x.k === k)) h.push({ k, on: k !== 'intim' }); return h; })();
+const curMode = () => document.documentElement.dataset.mode || 'day';
+
+function applyCustom() {
+  const de = document.documentElement, st = de.style;
+  for (const v of ['--plum', '--plum-2', '--plum-soft', '--period', '--period-mid', '--period-soft', '--fertile', '--fertile-soft', '--ovu', '--luteal', '--luteal-soft', '--bg', '--bg-2', '--bgimg', '--serif', '--num', '--sans', '--zoom', '--card', '--blur', '--nav-bg', '--top-bg']) st.removeProperty(v);
+  const c = SET.colors[curMode()] || {}, night = curMode() === 'night';
+  const soft = (x, p) => `color-mix(in srgb, ${x} ${p}%, ${night ? 'transparent' : '#fff'})`;
+  if (c.plum) { st.setProperty('--plum', c.plum); st.setProperty('--plum-2', `color-mix(in srgb, ${c.plum} 78%, #fff)`); st.setProperty('--plum-soft', soft(c.plum, 18)); }
+  if (c.period) { st.setProperty('--period', c.period); st.setProperty('--period-mid', `color-mix(in srgb, ${c.period} 72%, #fff)`); st.setProperty('--period-soft', soft(c.period, 20)); }
+  if (c.fertile) { st.setProperty('--fertile', c.fertile); st.setProperty('--fertile-soft', soft(c.fertile, 22)); }
+  if (c.ovu) st.setProperty('--ovu', c.ovu);
+  if (c.luteal) { st.setProperty('--luteal', c.luteal); st.setProperty('--luteal-soft', soft(c.luteal, 22)); }
+  if (c.bg) { st.setProperty('--bg', c.bg); st.setProperty('--bg-2', `color-mix(in srgb, ${c.bg} 92%, ${night ? '#fff' : '#000'})`); st.setProperty('--bgimg', 'none'); }
+  const f = k => (FONTS[k].find(x => x[0] === SET.font[k]) || FONTS[k][0])[2];
+  st.setProperty('--serif', f('title')); st.setProperty('--num', f('num')); st.setProperty('--sans', f('body'));
+  st.setProperty('--zoom', SET.size);
+  // 透明度：用配色原本的卡片色，再乘上使用者設定的不透明度
+  const op = SET.opacity ?? 100, bl = SET.blur ?? 10;
+  if (op !== 100) {
+    const base = getComputedStyle(de).getPropertyValue('--card').trim();
+    st.setProperty('--card', `color-mix(in srgb, ${base} ${op}%, transparent)`);
+    st.setProperty('--nav-bg', `color-mix(in srgb, var(--bg) ${Math.max(40, op)}%, transparent)`);
+    st.setProperty('--top-bg', `color-mix(in srgb, var(--bg) ${Math.max(30, op * .8)}%, transparent)`);
   }
-  const moon = (x, y, r, rot) => `<path transform="translate(${x} ${y}) rotate(${rot})" d="M0 ${-r} A${r} ${r} 0 1 0 0 ${r} A${r * .78} ${r * .78} 0 1 1 0 ${-r}Z" class="v5moon"/>`;
-  let stars = '';
-  const rnd = (sd => () => (sd = (sd * 9301 + 49297) % 233280) / 233280)(3);
-  for (let i = 0; i < 34; i++) { const a = rnd() * 360, r = 92 + rnd() * 75, [x, y] = P(r, a); stars += `<circle cx="${f(x)}" cy="${f(y)}" r="${(rnd() * 1.2 + .3).toFixed(2)}"/>`; }
-  const spark = (x, y, s) => `<path transform="translate(${x} ${y}) scale(${s})" d="M0 -10 L2 -2 L10 0 L2 2 L0 10 L-2 2 L-10 0 L-2 -2Z" class="v5spark"/>`;
-  const spike = (rot, r0, r1, w) => `<path transform="rotate(${rot})" d="M0 ${-r1} L${w} ${-(r0 + r1) / 2} L0 ${-r0} L${-w} ${-(r0 + r1) / 2}Z" fill="url(#v5n)"/>`;
-  let rose = '';
-  for (const r of [45, 135, 225, 315]) rose += spike(r, 0, 70, 6);
-  return `<svg class="vdial v5" viewBox="-170 -170 340 340" role="img" aria-label="資產羅盤：環是資產比例，內側紅線是負債">
-    <defs>
-      <linearGradient id="v5g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:${C('hi')}"/><stop offset=".3" style="stop-color:${C('lo')}"/><stop offset=".55" style="stop-color:${C('hi')}"/><stop offset=".8" style="stop-color:${C('lo')}"/><stop offset="1" style="stop-color:${C('acc')}"/></linearGradient>
-      <linearGradient id="v5n" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:${C('hi')}"/><stop offset=".5" style="stop-color:${C('acc')}"/><stop offset=".5" style="stop-color:${C('lo')}"/><stop offset="1" style="stop-color:${C('lo')}"/></linearGradient>
-      <radialGradient id="v5f" cx="50%" cy="45%" r="60%"><stop offset="0" style="stop-color:${C('d2')}"/><stop offset="1" style="stop-color:${C('d0')}"/></radialGradient>
-      <radialGradient id="v5c" cx="50%" cy="35%" r="70%"><stop offset="0" style="stop-color:${C('d1')}"/><stop offset="1" style="stop-color:${C('d0')}"/></radialGradient>
-    </defs>
-    <circle r="168" style="fill:${A('d0', .35)};stroke:${A('acc', .35)};stroke-width:.8"/>
-    <g class="v5stars">${stars}</g>
-    ${leaves}
-    <circle r="160" fill="url(#v5f)" style="fill-opacity:.92;stroke:url(#v5g);stroke-width:2.2"/>
-    ${ticks}
-    <circle r="148" style="fill:none;stroke:${A('acc', .45)};stroke-width:.8"/>
-    <circle r="130" style="fill:none;stroke:url(#v5g);stroke-width:1.6"/>
-    <circle r="116" style="fill:none;stroke:${A('d0', .65)};stroke-width:16"/>${ring}${debt}
-    <circle r="102" style="fill:none;stroke:url(#v5g);stroke-width:1.2"/>
-    ${moon(122, -118, 12, 30)}
-    ${spark(-96, -96, .7)}${spark(110, 90, .55)}${spark(-130, 10, .4)}
-    <g opacity=".55">${rose}</g>
-    <circle r="86" fill="url(#v5c)" style="stroke:url(#v5g);stroke-width:2.4"/>
-    <circle r="80" style="fill:none;stroke:${A('acc', .4)};stroke-width:.7"/>
-    ${spike(0, 86, 128, 6)}${spike(90, 86, 128, 6)}${spike(180, 86, 128, 6)}${spike(270, 86, 128, 6)}
-    ${spike(0, 158, 200, 6)}${spike(180, 158, 196, 5)}
-    <path d="M0 -222 L3.5 -210 L15 -206 L3.5 -202 L0 -190 L-3.5 -202 L-15 -206 L-3.5 -210Z" style="fill:${C('hi')}"/>
-    <text y="-174" class="v5cl">N</text><text y="182" class="v5cl">S</text>
-  </svg>`;
-};
-/* 節點文字：銀行存款 */
-const _ovView5 = VIEWS.overview;
-VIEWS.overview = () => _ovView5().replace('<span class="cn-t">銀行</span>', '<span class="cn-t">銀行存款</span>');
-/* 資產走勢：近 6 個月，月份刻度 */
-verTrend = function () {
-  const t = splitTotals(), now = new Date();
-  const months = [];
-  for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ y: d.getFullYear(), m: d.getMonth(), v: null }); }
-  const snaps = S.snapshots.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  for (const s of snaps) { const d = parseYmd(s.date); const mm = months.find(x => x.y === d.getFullYear() && x.m === d.getMonth()); if (mm) mm.v = num(s.net); }
-  months[5].v = t.net;
-  const pts = months.filter(x => x.v != null);
-  const first = pts[0].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
-  const W = 320, H = 120, L = 26, R = 10, T = 12, B = 22;
-  const vals = pts.map(p => p.v), lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || Math.max(1, Math.abs(hi) * .1);
-  const X = i => L + (W - L - R) * i / 5, Y = v => T + (H - T - B) * (1 - (v - lo) / span);
-  const idx = months.map((x, i) => x.v != null ? i : -1).filter(i => i >= 0);
-  const line = idx.map((i, k) => `${k ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(months[i].v).toFixed(1)}`).join(' ');
-  const area = idx.length > 1 ? `${line} L${X(idx[idx.length - 1]).toFixed(1)} ${H - B} L${X(idx[0]).toFixed(1)} ${H - B}Z` : '';
-  const grid = [0, 1, 2, 3].map(k => { const y = T + (H - T - B) * k / 3; return `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="v5grid"/><text x="${L - 5}" y="${y + 3}" class="v5yl">${S.hide ? '' : fmtShort(hi - span * k / 3)}</text>`; }).join('');
-  const labels = months.map((x, i) => `<text x="${X(i).toFixed(1)}" y="${H - 6}" class="v5ml">${x.m + 1}月</text>`).join('');
-  const dots = idx.map(i => `<circle cx="${X(i).toFixed(1)}" cy="${Y(months[i].v).toFixed(1)}" r="3" class="v5dot"/>`).join('');
-  return `<section class="panel ver-trend"><div class="tp-head"><h4>資產走勢</h4><span class="vt-r"><span class="meta">近 6 個月</span><span class="v5chg ${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${Math.abs(chg).toFixed(2)}%</span></span></div>
-    <svg class="v5chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="近 6 個月淨資產走勢">
-      <defs><linearGradient id="v5a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:rgba(var(--sk-acc),.45)"/><stop offset="1" style="stop-color:rgba(var(--sk-acc),0)"/></linearGradient></defs>
-      ${grid}${area ? `<path d="${area}" fill="url(#v5a)"/>` : ''}<path d="${line}" class="v5line"/>${dots}${labels}</svg>
-    ${idx.length < 2 ? '<p class="meta v5note">每天開 App 會自動記一筆，下個月起就會連成走勢線</p>' : ''}</section>`;
-};
-function fmtShort(v) { const a = Math.abs(v); return (v < 0 ? '-' : '') + (a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? Math.round(a / 1e3) + 'K' : Math.round(a)); }
-
-/* 所有主題都註冊完後，再套用一次使用者選的主題 */
-try { applyTheme(localStorage.getItem('ac_theme') || 'starmap'); if (typeof render === 'function' && S.user !== undefined) render(); } catch (_) { }
-
-/* ================================================================
- * 北歐主題 Nordic Calm／Nordic Dusk：乾淨的現代金融介面
- * ================================================================ */
-THEME_INFO.nordic = ['北歐靜謐', 'NORDIC CALM', '奶油白 × 鼠尾草綠'];
-THEME_INFO.dusk = ['北歐暮色', 'NORDIC DUSK', '墨綠 × 香檳金'];
-THEMES.unshift(['nordic', '北歐靜謐', ['#F8F7F3', '#6B8F7A', '#26302B']], ['dusk', '北歐暮色', ['#0E2B2A', '#C9A96B', '#EEF0EA']]);
-const isNordic = () => ['nordic', 'dusk'].includes(document.documentElement.dataset.theme);
-try { if (!localStorage.getItem('ac_nordic_v1')) { localStorage.setItem('ac_nordic_v1', '1'); applyTheme('nordic'); } } catch (_) { }
-
-function nordDial(t) {
-  const f = n => n.toFixed(2), DEG2 = Math.PI / 180;
-  const cardDebt = t.debt + t.liab;
-  const parts = [['bank', t.bankOnly], ['stock', t.invest], ['debt', cardDebt], ['recv', t.other]];
-  const tot = sum(parts, p => Math.abs(p[1])) || 1;
-  // 順序：銀行（左上）→ 投資（右上）→ 其他（右下）→ 信用卡（左下），從正上方順時針
-  const order = [['stock', t.invest], ['recv', t.other], ['debt', cardDebt], ['bank', t.bankOnly]];
-  let a0 = 0, segs = '';
-  const arc = (r, s, e) => { const p = a => [r * Math.sin(a * DEG2), -r * Math.cos(a * DEG2)]; const [x0, y0] = p(s), [x1, y1] = p(e); return `M${f(x0)} ${f(y0)}A${r} ${r} 0 ${e - s > 180 ? 1 : 0} 1 ${f(x1)} ${f(y1)}`; };
-  for (const [k, v] of order) { const sw = Math.abs(v) / tot * 360; if (sw < .5) continue; segs += sw >= 359.5 ? `<circle r="110" class="nseg" style="stroke:var(--c-${k})"/>` : `<path d="${arc(110, a0 + .8, a0 + sw - .8)}" class="nseg" style="stroke:var(--c-${k})"/>`; a0 += sw; }
-  if (!segs) segs = '<circle r="110" class="nseg empty"/>';
-  const lbl = [['N', 0, -144], ['E', 146, 4], ['S', 0, 150], ['W', -146, 4]].map(([c, x, y]) => `<text x="${x}" y="${y}" class="ncl">${c}</text>`).join('');
-  const ticks = [0, 90, 180, 270].map(a => `<line x1="0" y1="-128" x2="0" y2="-134" transform="rotate(${a})" class="ntk"/>`).join('');
-  const needle = document.documentElement.dataset.theme === 'dusk'
-    ? `<g class="nneedle"><path d="M0 -158 L5 -96 L0 -88 L-5 -96Z"/><path d="M0 158 L5 96 L0 88 L-5 96Z"/><path d="M-158 0 L-96 4 L-88 0 L-96 -4Z" opacity=".7"/><path d="M158 0 L96 4 L88 0 L96 -4Z" opacity=".7"/></g>` : '';
-  return `<svg class="ndial" viewBox="-160 -160 320 320" role="img" aria-label="資產比例圓環">
-    <defs><radialGradient id="ncore" cx="50%" cy="40%" r="65%"><stop offset="0" style="stop-color:var(--n-core-hi)"/><stop offset="1" style="stop-color:var(--n-core)"/></radialGradient></defs>
-    ${ticks}${lbl}${needle}<circle r="110" class="ntrack"/>${segs}
-    <circle r="88" fill="url(#ncore)" class="ncore"/>
-    <path d="M0 -76 L3.5 -67 L12 -64 L3.5 -61 L0 -52 L-3.5 -61 L-12 -64 L-3.5 -67Z" class="nstar"/>
-  </svg>`;
+  st.setProperty('--blur', bl + 'px');
+  de.classList.toggle('glass', op < 70);
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', c.bg || getComputedStyle(de).getPropertyValue('--bg').trim());
 }
-function nordTrend() {
-  const t = splitTotals(), now = new Date();
-  const months = [];
-  for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ y: d.getFullYear(), m: d.getMonth(), v: null }); }
-  for (const s of S.snapshots) { const d = parseYmd(s.date); const mm = months.find(x => x.y === d.getFullYear() && x.m === d.getMonth()); if (mm) mm.v = num(s.net); }
-  months[5].v = t.net;
-  const idx = months.map((x, i) => x.v != null ? i : -1).filter(i => i >= 0);
-  const first = months[idx[0]].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
-  const W = 320, H = 130, L = 8, R = 8, T = 12, B = 24;
-  const vals = idx.map(i => months[i].v), lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || Math.max(1, Math.abs(hi) * .1);
-  const X = i => L + (W - L - R) * i / 5, Y = v => T + (H - T - B) * (1 - (v - lo) / span) * .85 + (H - T - B) * .08;
-  const pts = idx.map(i => [X(i), Y(months[i].v)]);
-  let d = pts.length ? `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}` : '';
-  for (let k = 1; k < pts.length; k++) { const [x0, y0] = pts[k - 1], [x1, y1] = pts[k], cx = (x0 + x1) / 2; d += ` C${cx.toFixed(1)} ${y0.toFixed(1)} ${cx.toFixed(1)} ${y1.toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)}`; }
-  const area = pts.length > 1 ? `${d} L${pts[pts.length - 1][0].toFixed(1)} ${H - B} L${pts[0][0].toFixed(1)} ${H - B}Z` : '';
-  const grid = [0, 1, 2].map(k => `<line x1="${L}" x2="${W - R}" y1="${(T + (H - T - B) * k / 2).toFixed(1)}" y2="${(T + (H - T - B) * k / 2).toFixed(1)}" class="ngrid"/>`).join('');
-  const labels = months.map((x, i) => `<text x="${X(i).toFixed(1)}" y="${H - 6}" class="nml">${x.m + 1}月</text>`).join('');
-  const dots = pts.map(([x, y], k) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${k === pts.length - 1 ? 4 : 2.6}" class="ndot${k === pts.length - 1 ? ' last' : ''}"/>`).join('');
-  return `<section class="panel ntrend"><div class="nt-head"><h4>資產走勢</h4><span class="nt-r"><span>近 6 個月</span><b class="${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${Math.abs(chg).toFixed(2)}%</b><span class="nt-ic">${svgI('chart')}</span></span></div>
-    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="nchart" role="img" aria-label="近 6 個月淨資產走勢">
-      <defs><linearGradient id="nga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--n-area)"/><stop offset="1" style="stop-color:var(--n-area0)"/></linearGradient></defs>
-      ${grid}${area ? `<path d="${area}" fill="url(#nga)"/>` : ''}<path d="${d}" class="nline"/>${dots}${labels}</svg>
-    ${idx.length < 2 ? '<p class="meta nnote">每天開 App 會自動記一筆，下個月起就會連成走勢線</p>' : ''}</section>`;
-}
-const _ovViewN = VIEWS.overview;
-VIEWS.overview = () => {
-  let h = _ovViewN();
-  if (!isNordic()) return h;
-  const t = splitTotals(), range = S.range || 30;
-  const since = new Date(); since.setDate(since.getDate() - range);
-  const snaps = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  const first = snaps.length ? num(snaps[0].net) : t.net, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
-  const cardDebt = t.debt + t.liab, gross = t.gross || 1;
-  const pc = v => (v / gross * 100);
-  const corner = (pos, k, ic, name, v, act, extra = '') => { const p = pc(v); return `<button class="ncard ${pos}" data-act="${act}" ${extra} style="--nc:var(--c-${k})">
-      <span class="nc-top">${svgI(ic, 'nc-ic')}${svgI('chev', 'nc-ch')}</span><span class="nc-name">${name}</span>
-      <b class="nc-p ${v < 0 ? 'neg' : ''}">${p.toFixed(1)}%</b><span class="nc-v">${money(v)}</span></button>`; };
-  const dash = `<section class="ndash">
-    <div class="nbox">
-      ${corner('tl', 'bank', 'bank', '銀行存款', t.bankOnly, 'goto', 'data-tab="bank"')}
-      ${corner('tr', 'stock', 'chart', '投資資產', t.invest, 'goto', 'data-tab="invest"')}
-      ${corner('bl', 'debt', 'card', '信用卡負債', -cardDebt, 'goto', 'data-tab="cards"')}
-      ${corner('br', 'recv', 'box', '其他資產', t.other, 'acc-other')}
-      <div class="ndial-w">${nordDial(t)}
-        <div class="ncenter"><span>總資產淨值</span><b>${money(t.net)}</b><em class="${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${Math.abs(chg).toFixed(2)}%</em><small>${range === 30 ? '本月' : range === 90 ? '近三個月' : '近一年'}變動</small></div></div>
-    </div></section>${nordTrend()}`;
-  h = h.replace(/<section class="dash">[\s\S]*?<\/section>/, '').replace(/<section class="panel ver-trend">[\s\S]*?<\/section>/, '');
-  return dash + h;
+const _applyTheme0 = applyTheme;
+applyTheme = function () { _applyTheme0(); applyCustom(); };
+
+/* ---------- 今天頁：依設定的順序與開關組合區塊 ---------- */
+const _today0 = VIEWS.today;
+VIEWS.today = () => {
+  if (!A.current) return _today0();
+  const h = _today0(), hero = h.slice(0, h.indexOf('</section>') + 10);
+  const meds = medsToday(), rms = todayReminders();
+  const B = {
+    ring: () => hero,
+    rhythm: () => `<div class="sec"><h2>節奏</h2><span class="r">${A.irregular ? '週期變化較大，預測僅供參考' : ''}</span></div>${rhythmTiles()}${precisionTip()}`,
+    remind: () => rms.length ? `<div class="sec"><h2>今日提醒</h2><button class="btn small ghost" data-act="tab" data-tab="remind">全部</button></div>${rms.slice(0, 2).map(r => `<div class="rm"><span class="ic" style="--c:${r.c};--c-soft:${r.cs}">${svgI(r.ic)}</span><div><div class="t">${esc(r.t)}</div><div class="m">${esc(r.m)}</div></div></div>`).join('')}` : '',
+    meds: () => `<div class="sec"><h2>今日用藥</h2><span class="r">${meds.filter(x => x.done).length}/${meds.length}</span></div><section class="card">${medRows(meds)}</section>`,
+    recent: () => isOwner() ? `<div class="sec"><h2>近期紀錄</h2><button class="btn small ghost" data-act="tab" data-tab="records">全部</button></div><section class="card">${recentLogs(4)}</section>` : '',
+    intim: () => intimacyBlock(3),
+  };
+  let out = SET.home.filter(x => x.on).map(x => B[x.k] ? B[x.k]() : '').join('');
+  if (!isOwner() && !SET.home.find(x => x.k === 'intim').on) out += intimacyBlock(3); // 伴侶一定看得到親密紀錄入口
+  return out + `<button class="btn ghost block" data-act="set-home" style="margin-top:18px">${svgI('list')} 調整首頁區塊</button>`;
 };
 
-/* 只保留北歐兩個主題；舊主題自動換成最接近的 */
-THEMES.splice(0, THEMES.length, ...THEMES.filter(x => ['nordic', 'dusk'].includes(x[0])));
-Object.assign(OLD_THEME, { ivory: 'nordic', library: 'dusk', starmap: 'dusk', verdant: 'dusk', green: 'dusk', navy: 'dusk', purple: 'dusk' });
-try { applyTheme(localStorage.getItem('ac_theme') || 'nordic'); } catch (_) { }
+/* ---------- 設定畫面 ---------- */
+function setHomeSheet() {
+  const draw = () => `<div class="fs"><p class="note" style="margin-top:0">用箭頭調整順序，右邊開關決定要不要顯示。</p><div class="hb-list">${SET.home.map((x, i) => {
+    const lb = HOME_BLOCKS.find(b => b[0] === x.k)[1];
+    return `<div class="hb${x.on ? '' : ' off'}"><div class="hb-mv"><button type="button" data-mv="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="上移">${svgI('chevL', 'up')}</button><button type="button" data-mv="${i}" data-d="1" ${i === SET.home.length - 1 ? 'disabled' : ''} aria-label="下移">${svgI('chevR', 'dn')}</button></div><span class="g">${lb}</span><button type="button" class="tgl${x.on ? ' on' : ''}" data-tg="${i}" aria-label="顯示 ${lb}"></button></div>`;
+  }).join('')}</div></div><button type="button" class="btn ghost block" data-reset-home style="margin-top:10px">恢復預設</button>`;
+  const f = sheet('首頁區塊', `<div id="hbBox">${draw()}</div>`, {});
+  const box = $('#hbBox', f);
+  box.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.mv != null) { const i = +b.dataset.mv, j = i + +b.dataset.d; if (j < 0 || j >= SET.home.length) return; [SET.home[i], SET.home[j]] = [SET.home[j], SET.home[i]]; }
+    else if (b.dataset.tg != null) SET.home[+b.dataset.tg].on = !SET.home[+b.dataset.tg].on;
+    else if (b.hasAttribute('data-reset-home')) SET.home = HOME_BLOCKS.map(([k]) => ({ k, on: k !== 'intim' }));
+    else return;
+    saveSet(); box.innerHTML = draw(); if (S.tab === 'today') render();
+  });
+}
+function setThemeSheet2() {
+  const mode = curMode();
+  const pal = () => `<div class="pal-pick">${Object.entries(PALS).map(([k, [n, c]]) => `<button type="button" data-pal="${k}" class="${SET.pal === k ? 'on' : ''}"><span class="sw">${c.map(x => `<i style="background:${x}"></i>`).join('')}</span>${n}</button>`).join('')}</div>`;
+  const cur = k => { const c = SET.colors[curMode()] || {}; return c[k] || (k === 'bg' ? getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() : getComputedStyle(document.documentElement).getPropertyValue('--' + k).trim()); };
+  const toHex = v => { const m = /^#([0-9a-f]{6})$/i.exec(v); if (m) return v; const d = document.createElement('div'); d.style.color = v; document.body.appendChild(d); const rgb = getComputedStyle(d).color.match(/\d+/g) || [0, 0, 0]; d.remove(); return '#' + rgb.slice(0, 3).map(n => (+n).toString(16).padStart(2, '0')).join(''); };
+  const colorRows = () => COLOR_KEYS.map(([k, l, d]) => { const own = !!(SET.colors[curMode()] || {})[k]; return `<div class="cr"><label class="cr-sw" style="background:${cur(k)}"><input type="color" data-ck="${k}" value="${toHex(cur(k))}" aria-label="${l}"></label><div class="g"><b>${l}</b><span>${d}</span></div>${own ? `<button type="button" class="btn small ghost" data-cr="${k}">還原</button>` : '<span class="faint small">配色預設</span>'}</div>
+    <div class="sw-row" data-for="${k}">${SWATCH.map(s => `<button type="button" data-sw="${s}" style="background:${s}" aria-label="${s}"></button>`).join('')}</div>`; }).join('');
+  const fontSeg = k => `<div class="seg">${FONTS[k].map(([v, l]) => `<button type="button" data-font="${k}" data-v="${v}" class="${SET.font[k] === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const body = () => `
+    <div class="fs"><div class="lab">配色</div>${pal()}</div>
+    <div class="fs"><div class="lab">白天／夜間</div><div class="seg">${[['auto', '自動切換'], ['day', '白天'], ['night', '夜間']].map(([k, l]) => `<button type="button" data-mode="${k}" class="${SET.mode === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="fs"><div class="lab">自訂顏色 <span class="shr">${curMode() === 'night' ? '夜間' : '白天'}模式</span></div><p class="note" style="margin-top:0">白天和夜間分開設定。點色塊用調色盤，或點下面的建議色。</p>${colorRows()}
+      <button type="button" class="btn ghost block" data-reset-colors style="margin-top:12px">全部還原成配色預設</button></div>
+    <div class="fs"><div class="lab">字體</div>
+      <div class="muted small" style="margin:2px 0 6px">標題</div>${fontSeg('title')}
+      <div class="muted small" style="margin:12px 0 6px">數字</div>${fontSeg('num')}
+      <div class="muted small" style="margin:12px 0 6px">內文</div>${fontSeg('body')}
+      <div class="font-demo"><span style="font-family:var(--serif)">月汐・週期第</span> <b style="font-family:var(--num)">18</b><span style="font-family:var(--serif)"> 天</span><p style="font-family:var(--sans)">預計 10/23 開始・排卵日 10/9</p></div></div>
+    <div class="fs"><div class="lab">透明度</div><p class="note" style="margin-top:0">卡片越透明，背景的葉子與月亮越清楚；毛玻璃讓透出的背景變柔和，文字比較好讀。</p>
+      <div class="glass-presets">${[['不透明', 100, 10], ['霧面', 70, 14], ['透明', 45, 18], ['清透', 25, 8]].map(([l, o, b]) => `<button type="button" data-glass="${o},${b}">${l}</button>`).join('')}</div>
+      <div class="rng-row"><span>卡片不透明度</span><b id="opV">${SET.opacity ?? 100}%</b></div><input class="rng" type="range" min="15" max="100" step="5" data-rng="opacity" value="${SET.opacity ?? 100}" aria-label="卡片不透明度">
+      <div class="rng-row"><span>毛玻璃模糊</span><b id="blV">${SET.blur ?? 10}px</b></div><input class="rng" type="range" min="0" max="30" step="2" data-rng="blur" value="${SET.blur ?? 10}" aria-label="毛玻璃模糊"></div>
+    <div class="fs"><div class="lab">字級</div><div class="seg">${SIZES.map(([v, l]) => `<button type="button" data-size="${v}" class="${SET.size === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
+  const f = sheet('主題模式', `<div id="thBox">${body()}</div>`, {});
+  const box = $('#thBox', f);
+  const redraw = () => { const y = f.closest('.sheet').scrollTop; box.innerHTML = body(); f.closest('.sheet').scrollTop = y; render(); };
+  box.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.pal) SET.pal = b.dataset.pal;
+    else if (b.dataset.mode) SET.mode = b.dataset.mode;
+    else if (b.dataset.font) SET.font[b.dataset.font] = b.dataset.v;
+    else if (b.dataset.size) SET.size = +b.dataset.size;
+    else if (b.dataset.sw) { const k = b.closest('.sw-row').dataset.for; (SET.colors[curMode()] ||= {})[k] = b.dataset.sw; }
+    else if (b.dataset.cr) delete SET.colors[curMode()][b.dataset.cr];
+    else if (b.hasAttribute('data-reset-colors')) SET.colors[curMode()] = {};
+    else if (b.dataset.glass) { const [o, bl] = b.dataset.glass.split(',').map(Number); SET.opacity = o; SET.blur = bl; }
+    else return;
+    saveSet(); applyTheme(); redraw();
+  });
+  box.addEventListener('input', e => { const r = e.target.dataset.rng; if (r) { SET[r] = +e.target.value; $(r === 'opacity' ? '#opV' : '#blV', box).textContent = e.target.value + (r === 'opacity' ? '%' : 'px'); applyTheme(); saveSet(); } });
+  box.addEventListener('input', e => { const k = e.target.dataset.ck; if (!k) return; (SET.colors[curMode()] ||= {})[k] = e.target.value; e.target.parentElement.style.background = e.target.value; applyTheme(); });
+  box.addEventListener('change', e => { if (e.target.dataset.ck) { saveSet(); redraw(); } });
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  if (el.dataset.act === 'set-home') setHomeSheet();
+  if (el.dataset.act === 'set-theme') { e.stopImmediatePropagation(); setTimeout(() => { closeSheet(); setThemeSheet2(); }, 0); }
+}, true);
+applyCustom();
 
-/* ---------- 北歐主題：把卡片、帳戶、分類的顏色收斂到同一組柔和色票 ---------- */
-const NORD_PAL = [['#6B8F7A', 146], ['#4F7A68', 160], ['#7E9AAB', 200], ['#6E8196', 220], ['#CF9580', 16], ['#C2A06A', 38], ['#9C8796', 315], ['#A88F7E', 25]];
-function hexHue(hex) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim()); if (!m) return null;
-  const n = parseInt(m[1], 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
-  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
-  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
-  let h = 0; if (d) { h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
-  return { h, s };
-}
-function nordColor(input) {
-  let h, s = 1;
-  if (typeof input === 'number') h = input; else { const c = hexHue(input); if (!c) return null; h = c.h; s = c.s; }
-  if (s < .15) return '#A29D94';
-  let best = NORD_PAL[0], bd = 999;
-  for (const p of NORD_PAL) { const dd = Math.min(Math.abs(p[1] - h), 360 - Math.abs(p[1] - h)); if (dd < bd) { bd = dd; best = p; } }
-  return best[0];
-}
-function nordRecolor(root) {
-  if (!isNordic() || !root) return;
-  root.querySelectorAll('[style*="--cc"]').forEach(el => { const v = el.style.getPropertyValue('--cc'); if (v && !el.dataset.nc) { const c = nordColor(v); if (c) { el.dataset.nc = v; el.style.setProperty('--cc', c); } } });
-  root.querySelectorAll('.acc-ic[style*="--h"]').forEach(el => { const h = parseFloat(el.style.getPropertyValue('--h')); if (!isNaN(h)) el.style.setProperty('--nc', nordColor(h)); });
-  root.querySelectorAll('.cat-ic[style*="--c"]').forEach(el => { const v = el.style.getPropertyValue('--c'); const c = nordColor(v); if (c && !el.dataset.nc) { el.dataset.nc = v; el.style.setProperty('--c', c); } });
-}
-try {
-  const mo = new MutationObserver(() => { nordRecolor($('#view')); nordRecolor($('#modal')); });
-  const start = () => { ['#view', '#modal'].forEach(s => { const el = $(s); if (el) mo.observe(el, { childList: true, subtree: true }); }); };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-} catch (_) { }
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
+boot();
