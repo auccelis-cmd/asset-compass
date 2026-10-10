@@ -1822,3 +1822,173 @@ html.sky[data-theme="ivory"] body .cc .cc-name, html.sky[data-theme="ivory"] bod
 html.sky[data-theme="ivory"] body .cc .cc-num, html.sky[data-theme="ivory"] body .cc .cc-rew { color: #ecd9ae !important; }
 html.sky[data-theme="ivory"] body .cc .cc-name::before { background: #ecd9ae; }
 html.sky[data-theme="ivory"] body .cc::after { border-color: rgba(236,217,174,.45); }
+
+/* ================================================================
+ * 北歐靜謐 NORDIC CALM ／ 北歐暮色 NORDIC DUSK
+ * ================================================================ */
+html.nord[data-theme="nordic"] {
+  --night: #F8F7F3; --night-2: #F1EFE9; --panel: #FFFFFF; --panel-2: #F4F2EC; --line: #E3DFD5; --line-soft: #ECE9E2;
+  --gold: #6B8F7A; --gold-soft: #A9BFB2; --accent-text: #4E7260; --on-accent: #FFFFFF; --needle: #C9A96B;
+  --text: #26302B; --muted: #7A817C; --faint: #A6ABA5; --danger: #C46F55; --ok: #4E8A6A;
+  --c-bank: #6B8F7A; --c-stock: #8AA3B2; --c-debt: #D9A48F; --c-recv: #C9C5BE; --c-crypto: #C9A96B; --c-liab: #C98C78;
+  --card-1: #FFFFFF; --card-2: #F1EFE9; --card-text: #26302B; --card-sub: #7A817C; --chip-1: #E6D3A8; --chip-2: #B49A63;
+  --shadow: 70,70,50; --glow: #F8F7F3; --star: #C9A96B;
+  --n-card: #FFFFFF; --n-card-b: rgba(38,48,43,.05); --n-core: #FFFFFF; --n-core-hi: #FFFFFF; --n-track: #EEEBE4;
+  --n-area: rgba(107,143,122,.35); --n-area0: rgba(107,143,122,0); --n-line: #5E8370; --n-tab: #6B8F7A; --n-tab-t: #FFFFFF;
+  --n-fab-hi: #F6D2AE; --n-fab: #C98B5C; --n-fab-lo: #8C5733;
+  --title: "Noto Sans TC", -apple-system, "PingFang TC", sans-serif; --serif-tc: "Noto Serif TC", serif;
+  --num: "Noto Serif TC", "Noto Serif CJK TC", Georgia, serif;
+  color-scheme: light;
+}
+html.nord[data-theme="dusk"] {
+  --night: #0E2B2A; --night-2: #12332F; --panel: #163A35; --panel-2: #1F4A3F; --line: rgba(201,169,107,.22); --line-soft: rgba(238,240,234,.07);
+  --gold: #C9A96B; --gold-soft: #8C7A55; --accent-text: #D8BE86; --on-accent: #0E2B2A; --needle: #C9A96B;
+  --text: #EEF0EA; --muted: #A7B6AF; --faint: #7D8F88; --danger: #E0957A; --ok: #7FC4A0;
+  --c-bank: #4E9A7C; --c-stock: #7FA3C0; --c-debt: #D8936F; --c-recv: #8E9893; --c-crypto: #C9A96B; --c-liab: #C9826A;
+  --card-1: #1F4A3F; --card-2: #12332F; --card-text: #EEF0EA; --card-sub: #A7B6AF; --chip-1: #DCC28C; --chip-2: #9C8152;
+  --shadow: 0,0,0; --glow: #0E2B2A; --star: #C9A96B;
+  --n-card: rgba(31,74,63,.62); --n-card-b: rgba(201,169,107,.2); --n-core: #0F2E2B; --n-core-hi: #1B4540; --n-track: rgba(0,0,0,.25);
+  --n-area: rgba(78,154,124,.45); --n-area0: rgba(78,154,124,0); --n-line: #D8E6DE; --n-tab: #2E6B5A; --n-tab-t: #F1E9DB;
+  --n-fab-hi: #F1D9A8; --n-fab: #C69A5C; --n-fab-lo: #7E5A2E;
+  --title: "Noto Sans TC", -apple-system, "PingFang TC", sans-serif; --serif-tc: "Noto Serif TC", serif;
+  --num: "Noto Serif TC", "Noto Serif CJK TC", Georgia, serif;
+  color-scheme: dark;
+}
+html.nord body { background: var(--night) !important; }
+html.nord body::before { display: block !important; content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 1;
+  background: radial-gradient(70% 40% at 15% 0%, rgba(255,255,255,.55), transparent 70%), radial-gradient(60% 35% at 100% 100%, rgba(107,143,122,.10), transparent 70%) !important; }
+html.nord[data-theme="dusk"] body::before { background: radial-gradient(70% 40% at 85% 0%, rgba(46,107,90,.35), transparent 70%), radial-gradient(60% 40% at 0% 100%, rgba(201,169,107,.06), transparent 70%) !important; }
+html.nord #app::before, html.nord .lib-head, html.nord .lib-card, html.nord .hdate { display: none !important; }
+/* 頁首與上方分頁 */
+html.nord .top { background: color-mix(in srgb, var(--night) 94%, transparent) !important; border: 0 !important; backdrop-filter: blur(10px); }
+html.nord .brand { font-family: var(--serif-tc); font-weight: 700; letter-spacing: .14em; color: var(--text); }
+html.nord .brand .bt small { font-family: "Cormorant Garamond", var(--num); color: var(--muted); letter-spacing: .22em; font-weight: 600; }
+html.nord .brand .mark { stroke: var(--needle); }
+html.nord .toptabs { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 8px auto 4px; max-width: 616px; padding: 5px; border-radius: 99px; border: 0;
+  background: var(--n-card); box-shadow: 0 4px 14px rgba(var(--shadow),.06), inset 0 0 0 1px var(--n-card-b); }
+html.nord .toptabs button { font-family: var(--title); font-weight: 600; font-size: 14.5px; letter-spacing: .08em; color: var(--muted); border: 0; border-radius: 99px; padding: 8px 0; background: none; }
+html.nord .toptabs button.on { background: var(--n-tab) !important; color: var(--n-tab-t) !important; box-shadow: 0 4px 10px rgba(var(--shadow),.14); }
+@media (min-width: 680px) { html.nord .toptabs { margin-left: auto; margin-right: auto; } }
+/* 字體 */
+html.nord :is(h2, .fold-t, .crow-name, .sheet h3, .tt-name, .seg-ctl button, .lbl, .fab-grid b, .nt-head h4) { font-family: var(--title) !important; font-weight: 700 !important; letter-spacing: .04em; }
+html.nord h2 { color: var(--text); font-size: 16px; }
+html.nord h2::before { background: var(--gold); }
+/* 卡片：白底圓角、柔和陰影 */
+html.nord :is(.panel, .fold, .sum-card, .hero2, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip, .info-grid div, .seg-ctl, .dash) {
+  background: var(--n-card) !important; border: 0 !important; border-radius: 20px !important;
+  box-shadow: 0 6px 20px rgba(var(--shadow),.07), inset 0 0 0 1px var(--n-card-b) !important; backdrop-filter: none !important;
+}
+html.nord[data-theme="dusk"] :is(.panel, .fold, .sum-card, .hero2, .trend-card, .inv-row, .crow, .tile, .list-card, .rew-strip, .info-grid div, .seg-ctl, .dash) { box-shadow: 0 10px 26px rgba(0,0,0,.25), inset 0 0 0 1px var(--n-card-b) !important; backdrop-filter: blur(6px) !important; }
+html.nord .crow { border-left: 4px solid var(--cc) !important; }
+html.nord .crow-ic { border-radius: 12px; background: color-mix(in srgb, var(--cc) 14%, var(--panel)); color: var(--cc); border: 0; }
+html.nord .crow-l4 { display: block; font-family: var(--num); font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+html.nord .row { border-color: var(--line-soft); }
+html.nord .acc-ic { border-radius: 50%; background: hsl(var(--h) 32% 52%); box-shadow: none; }
+html.nord[data-theme="dusk"] .acc-ic { background: hsl(var(--h) 34% 42%); }
+html.nord .sum-art { opacity: .12; }
+/* 數字 */
+html.nord :is(.amt, .amt-sm, .hero2-num, .dash-num, .tile b, .crow-r b, .sum-card > b, .info-grid b, .donut-c b, .cc-mid b, .rew-strip b, .inv-row .grow span) { font-family: var(--num) !important; font-weight: 700 !important; color: var(--text); }
+/* 總覽：圓環＋四角卡 */
+.ndash { display: none; }
+html.nord .ndash { display: block; margin-top: 6px; }
+html.nord .nbox { position: relative; width: 100%; max-width: 420px; margin: 0 auto; aspect-ratio: 1 / 1.08; }
+html.nord .ncard { position: absolute; z-index: 1; width: 39%; height: 38%; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px; text-align: left; padding: 14px 14px; cursor: pointer;
+  background: var(--n-card); border: 0; border-radius: 20px; color: var(--text); box-shadow: 0 6px 18px rgba(var(--shadow),.07), inset 0 0 0 1px var(--n-card-b); }
+html.nord[data-theme="dusk"] .ncard { backdrop-filter: blur(6px); }
+html.nord .ncard.tl { left: 0; top: 0; } html.nord .ncard.tr { right: 0; top: 0; align-items: flex-end; text-align: right; }
+html.nord .ncard.bl { left: 0; bottom: 0; justify-content: flex-end; } html.nord .ncard.br { right: 0; bottom: 0; align-items: flex-end; text-align: right; justify-content: flex-end; }
+html.nord .nc-top { display: flex; width: 100%; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+html.nord .ncard.tr .nc-top, html.nord .ncard.br .nc-top { flex-direction: row-reverse; }
+html.nord .ncard.tr .nc-ch, html.nord .ncard.br .nc-ch { transform: none; }
+html.nord .nc-ic { width: 26px !important; height: 26px !important; color: var(--nc); stroke-width: 1.7; }
+html.nord .nc-ch { width: 16px !important; height: 16px !important; color: var(--faint); }
+html.nord .nc-name { font-size: 13px; font-weight: 600; color: var(--text); }
+html.nord .nc-p { font-family: var(--num); font-size: 19px; font-weight: 700; color: var(--nc); line-height: 1.25; }
+html.nord[data-theme="nordic"] .ncard.tl .nc-p { color: #4E7260; } html.nord[data-theme="nordic"] .ncard.tr .nc-p { color: #5D7F92; } html.nord[data-theme="nordic"] .ncard.br .nc-p { color: #6E6A62; }
+html.nord .nc-p.neg { color: var(--danger) !important; }
+html.nord .nc-v { font-size: 12px; color: var(--muted); font-family: var(--num); }
+html.nord .ndial-w { position: absolute; z-index: 2; left: 50%; top: 50%; width: 76%; aspect-ratio: 1; transform: translate(-50%, -50%); pointer-events: none; }
+.ndial { width: 100%; height: 100%; overflow: visible; }
+.ndial .ntrack { fill: none; stroke: var(--n-track); stroke-width: 34; }
+.ndial .nseg { fill: none; stroke-width: 34; }
+.ndial .nseg.empty { stroke: var(--line); stroke-dasharray: 3 6; }
+.ndial .ncore { filter: drop-shadow(0 6px 14px rgba(var(--shadow),.18)); }
+html.nord[data-theme="dusk"] .ndial .ncore { stroke: rgba(201,169,107,.55); stroke-width: 1.5; }
+.ndial .nstar { fill: var(--needle); }
+.ndial .ncl { fill: var(--muted); font-family: var(--num); font-size: 13px; text-anchor: middle; dominant-baseline: middle; }
+.ndial .ntk { stroke: var(--faint); stroke-width: 1.2; }
+.ndial .nneedle path { fill: #C9A96B; }
+html.nord .ncenter { position: absolute; left: 50%; top: 53%; transform: translate(-50%, -50%); width: 46%; text-align: center; display: flex; flex-direction: column; align-items: center; }
+html.nord .ncenter span { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+html.nord .ncenter b { font-family: var(--num); font-weight: 700; font-size: clamp(17px, 5.4vw, 24px); color: var(--text); white-space: nowrap; line-height: 1.3; }
+html.nord .ncenter em { font-style: normal; font-weight: 700; font-size: 14px; } html.nord .ncenter em.pos { color: var(--ok); } html.nord .ncenter em.neg { color: var(--danger); }
+html.nord .ncenter small { font-size: 11px; color: var(--muted); }
+/* 走勢 */
+.ntrend { display: none; }
+html.nord .ntrend { display: block; margin-top: 14px; padding: 16px 16px 10px; }
+html.nord .nt-head { display: flex; justify-content: space-between; align-items: center; }
+html.nord .nt-head h4 { margin: 0; font-size: 17px; color: var(--text); }
+html.nord .nt-r { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+html.nord .nt-r b { font-size: 15px; } html.nord .nt-r b.pos { color: var(--ok); } html.nord .nt-r b.neg { color: var(--danger); }
+html.nord .nt-ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--panel-2); color: var(--gold); }
+html.nord .nt-ic .i { width: 18px; height: 18px; }
+.nchart { display: block; width: 100%; height: 140px; margin-top: 6px; overflow: visible; }
+.nchart .ngrid { stroke: var(--line-soft); stroke-width: .8; stroke-dasharray: 3 4; }
+.nchart .nml { fill: var(--muted); font-size: 10px; text-anchor: middle; }
+.nchart .nline { fill: none; stroke: var(--n-line); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.nchart .ndot { fill: var(--n-card); stroke: var(--n-line); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.nchart .ndot.last { fill: var(--n-line); }
+html.nord .nnote { text-align: center; font-size: 12px; margin: 2px 0 6px; }
+/* 信用卡卡面 */
+html.nord .cc-sky, html.nord .cc-chip { display: none !important; }
+html.nord .cc { border-radius: 20px !important; outline: 0 !important; border: 0 !important; padding: 22px !important;
+  background: radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--cc) 35%, transparent), transparent 60%), linear-gradient(140deg, #6B8F7A, #4B6B5B) !important;
+  box-shadow: 0 14px 28px rgba(var(--shadow),.18) !important; color: #fff; }
+html.nord[data-theme="dusk"] .cc { background: radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--cc) 25%, transparent), transparent 60%), linear-gradient(140deg, #24574B, #12332F) !important; box-shadow: 0 0 0 1px rgba(201,169,107,.45) inset, 0 14px 28px rgba(0,0,0,.35) !important; }
+html.nord .cc::after { display: none !important; }
+html.nord .cc .cc-name, html.nord .cc .cc-mid b, html.nord .cc .cc-bot, html.nord .cc .cc-num { color: #fff !important; }
+html.nord .cc .cc-num { display: block; letter-spacing: .18em; opacity: .85; font-size: 13px; }
+html.nord .cc-rew { background: rgba(255,255,255,.18) !important; color: #fff !important; }
+/* 按鈕與控制項 */
+html.nord .btn { border-radius: 14px; }
+html.nord .btn.primary { background: var(--gold) !important; color: var(--on-accent) !important; border: 0 !important; box-shadow: 0 6px 14px rgba(var(--shadow),.14) !important; }
+html.nord .btn.outline, html.nord .btn.ghost { border: 1px solid var(--line) !important; background: var(--n-card) !important; color: var(--accent-text) !important; border-radius: 99px; }
+html.nord :is(.pills, .rchips) button { border: 0 !important; background: var(--panel-2) !important; color: var(--muted); border-radius: 99px; box-shadow: none !important; }
+html.nord :is(.pills, .rchips) button.on { background: var(--n-card) !important; color: var(--text) !important; box-shadow: 0 2px 8px rgba(var(--shadow),.1) !important; }
+html.nord .seg-ctl button.on { background: var(--gold); color: var(--on-accent); }
+html.nord .qa button .i { background: var(--n-card); border: 0; box-shadow: 0 4px 12px rgba(var(--shadow),.08), inset 0 0 0 1px var(--n-card-b); color: var(--gold); }
+html.nord :is(input, select, textarea) { background: var(--night-2) !important; border: 1px solid var(--line) !important; border-radius: 12px; color: var(--text) !important; }
+html.nord .sheet { background: var(--panel) !important; border: 0; border-radius: 24px 24px 0 0 !important; }
+html.nord[data-theme="dusk"] .sheet { background: #163A35 !important; }
+html.nord .modal { background: rgba(20,30,25,.35) !important; }
+html.nord .fab-grid button { background: var(--night-2); border: 0; border-radius: 16px; }
+/* 底部導覽＋銅色記帳鈕 */
+html.nord .tabs { background: var(--n-card) !important; border: 0 !important; border-radius: 26px !important; box-shadow: 0 10px 30px rgba(var(--shadow),.12), inset 0 0 0 1px var(--n-card-b) !important; backdrop-filter: blur(12px) !important; }
+html.nord[data-theme="dusk"] .tabs { background: rgba(18,51,47,.94) !important; }
+html.nord .tabs button { color: var(--muted); }
+html.nord .tabs button.on { color: var(--accent-text); }
+html.nord .tabs button.on svg { fill: color-mix(in srgb, var(--gold) 30%, transparent); }
+html.nord .tabs .fab { border: 0 !important; background: radial-gradient(circle at 35% 28%, var(--n-fab-hi), var(--n-fab) 52%, var(--n-fab-lo)) !important;
+  box-shadow: 0 0 0 5px var(--night), 0 0 0 6px color-mix(in srgb, var(--n-fab) 40%, transparent), 0 10px 22px rgba(var(--shadow),.3) !important; }
+html.nord .tabs .fab svg { fill: #fff; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+html.nord .fab-radial { background: rgba(20,30,25,.3); }
+html.nord .fab-radial .fr-btn { color: var(--text); font-family: var(--title); font-weight: 600; }
+html.nord .fab-radial .fr-btn .i { background: var(--n-card); border: 0; color: var(--gold); box-shadow: 0 6px 16px rgba(var(--shadow),.18); }
+html.nord .fab-radial .fr-more { background: var(--n-card); border: 0; color: var(--accent-text); box-shadow: 0 4px 12px rgba(var(--shadow),.12); font-family: var(--title); }
+/* 主題卡 */
+.tt-nordic { background: #F8F7F3 !important; } .tt-dusk { background: #17302D !important; }
+.tt-nordic .tt-img, .tt-dusk .tt-img { background: none !important; box-shadow: none !important; position: relative; }
+.tt-nordic .tt-img::before, .tt-dusk .tt-img::before { content: ""; position: absolute; right: 10px; top: 12px; width: 70%; height: 46%; border-radius: 8px;
+  background: linear-gradient(90deg, #6F8E7A 0 31%, transparent 31% 34.5%, #8FA3B0 34.5% 65.5%, transparent 65.5% 69%, #D2A690 69%); }
+.tt-dusk .tt-img::before { background: linear-gradient(90deg, #2B4A40 0 31%, transparent 31% 34.5%, #C3A86F 34.5% 65.5%, transparent 65.5% 69%, #3E6A5C 69%); }
+.tt-nordic .tt-orb, .tt-dusk .tt-orb { display: none !important; }
+.tt-nordic .tt-name { color: #2E4339 !important; } .tt-nordic .tt-name small, .tt-nordic .tt-desc { color: #6E766F !important; }
+.tt-dusk .tt-name { color: #F1E9DB !important; } .tt-dusk .tt-name small, .tt-dusk .tt-desc { color: #B8B7A6 !important; }
+html.nord .ncard svg { fill: none !important; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+html.nord .nbox { aspect-ratio: 1 / 1.12; }
+html.nord .ncard { width: 40%; height: 36%; }
+html.nord .ndial-w { width: 66%; }
+.ndial .ntrack, .ndial .nseg { stroke-width: 30; }
+html.nord .ncenter { top: 51.5%; width: 50%; }
+html.nord .ncenter b { font-size: clamp(15px, 4.6vw, 21px); }
+html.nord .ncenter span { font-size: 11.5px; }

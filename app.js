@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10s';
+const APP_VERSION = '2026.10.10t';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -2154,11 +2154,13 @@ const OLD_THEME = { champagne: 'ivory', mist: 'ivory', oat: 'ivory', forest: 'gr
 function applyTheme(t) {
   t = OLD_THEME[t] || t;
   const th = THEMES.find(x => x[0] === t);
-  if (!th) { document.documentElement.dataset.theme = t; return; } // 主題還沒載入完：先套上，不要覆寫存檔
-  document.documentElement.dataset.theme = th[0];
+  const NORD = ['nordic', 'dusk'], de = document.documentElement;
+  de.classList.toggle('nord', NORD.includes(t)); de.classList.toggle('sky', !NORD.includes(t));
+  if (!th) { de.dataset.theme = t; return; } // 主題還沒載入完：先套上，不要覆寫存檔
+  de.dataset.theme = th[0];
   try { localStorage.setItem('ac_theme', th[0]); } catch (_) { }
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', th[2][0]);
-  document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]')?.setAttribute('content', th[0] === 'ivory' ? 'default' : 'black-translucent');
+  document.querySelector('meta[name=apple-mobile-web-app-status-bar-style]')?.setAttribute('content', ['ivory', 'nordic'].includes(th[0]) ? 'default' : 'black-translucent');
 }
 function themeTiles() {
   const cur = document.documentElement.dataset.theme || 'ivory';
@@ -2655,7 +2657,6 @@ THEME_INFO.starmap = ['星圖秘境', 'STARMAP', '星空羅盤・鎏金描邊'];
 THEMES.unshift(['starmap', '星圖秘境', ['#0d181a', '#d9b878', '#f1ece0']]);
 try { if (!localStorage.getItem('ac_star_v1')) { localStorage.setItem('ac_star_v1', '1'); applyTheme('starmap'); } } catch (_) { }
 
-try { document.documentElement.classList.add('sky'); } catch (_) { }
 
 /* ================================================================
  * 星象 v5：設計稿總覽（大圓節點、四向金針、新月與葉枝、月份走勢）
@@ -2748,3 +2749,84 @@ function fmtShort(v) { const a = Math.abs(v); return (v < 0 ? '-' : '') + (a >= 
 
 /* 所有主題都註冊完後，再套用一次使用者選的主題 */
 try { applyTheme(localStorage.getItem('ac_theme') || 'starmap'); if (typeof render === 'function' && S.user !== undefined) render(); } catch (_) { }
+
+/* ================================================================
+ * 北歐主題 Nordic Calm／Nordic Dusk：乾淨的現代金融介面
+ * ================================================================ */
+THEME_INFO.nordic = ['北歐靜謐', 'NORDIC CALM', '奶油白 × 鼠尾草綠'];
+THEME_INFO.dusk = ['北歐暮色', 'NORDIC DUSK', '墨綠 × 香檳金'];
+THEMES.unshift(['nordic', '北歐靜謐', ['#F8F7F3', '#6B8F7A', '#26302B']], ['dusk', '北歐暮色', ['#0E2B2A', '#C9A96B', '#EEF0EA']]);
+const isNordic = () => ['nordic', 'dusk'].includes(document.documentElement.dataset.theme);
+try { if (!localStorage.getItem('ac_nordic_v1')) { localStorage.setItem('ac_nordic_v1', '1'); applyTheme('nordic'); } } catch (_) { }
+
+function nordDial(t) {
+  const f = n => n.toFixed(2), DEG2 = Math.PI / 180;
+  const cardDebt = t.debt + t.liab;
+  const parts = [['bank', t.bankOnly], ['stock', t.invest], ['debt', cardDebt], ['recv', t.other]];
+  const tot = sum(parts, p => Math.abs(p[1])) || 1;
+  // 順序：銀行（左上）→ 投資（右上）→ 其他（右下）→ 信用卡（左下），從正上方順時針
+  const order = [['stock', t.invest], ['recv', t.other], ['debt', cardDebt], ['bank', t.bankOnly]];
+  let a0 = 0, segs = '';
+  const arc = (r, s, e) => { const p = a => [r * Math.sin(a * DEG2), -r * Math.cos(a * DEG2)]; const [x0, y0] = p(s), [x1, y1] = p(e); return `M${f(x0)} ${f(y0)}A${r} ${r} 0 ${e - s > 180 ? 1 : 0} 1 ${f(x1)} ${f(y1)}`; };
+  for (const [k, v] of order) { const sw = Math.abs(v) / tot * 360; if (sw < .5) continue; segs += sw >= 359.5 ? `<circle r="110" class="nseg" style="stroke:var(--c-${k})"/>` : `<path d="${arc(110, a0 + .8, a0 + sw - .8)}" class="nseg" style="stroke:var(--c-${k})"/>`; a0 += sw; }
+  if (!segs) segs = '<circle r="110" class="nseg empty"/>';
+  const lbl = [['N', 0, -144], ['E', 146, 4], ['S', 0, 150], ['W', -146, 4]].map(([c, x, y]) => `<text x="${x}" y="${y}" class="ncl">${c}</text>`).join('');
+  const ticks = [0, 90, 180, 270].map(a => `<line x1="0" y1="-128" x2="0" y2="-134" transform="rotate(${a})" class="ntk"/>`).join('');
+  const needle = document.documentElement.dataset.theme === 'dusk'
+    ? `<g class="nneedle"><path d="M0 -158 L5 -96 L0 -88 L-5 -96Z"/><path d="M0 158 L5 96 L0 88 L-5 96Z"/><path d="M-158 0 L-96 4 L-88 0 L-96 -4Z" opacity=".7"/><path d="M158 0 L96 4 L88 0 L96 -4Z" opacity=".7"/></g>` : '';
+  return `<svg class="ndial" viewBox="-160 -160 320 320" role="img" aria-label="資產比例圓環">
+    <defs><radialGradient id="ncore" cx="50%" cy="40%" r="65%"><stop offset="0" style="stop-color:var(--n-core-hi)"/><stop offset="1" style="stop-color:var(--n-core)"/></radialGradient></defs>
+    ${ticks}${lbl}${needle}<circle r="110" class="ntrack"/>${segs}
+    <circle r="88" fill="url(#ncore)" class="ncore"/>
+    <path d="M0 -76 L3.5 -67 L12 -64 L3.5 -61 L0 -52 L-3.5 -61 L-12 -64 L-3.5 -67Z" class="nstar"/>
+  </svg>`;
+}
+function nordTrend() {
+  const t = splitTotals(), now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push({ y: d.getFullYear(), m: d.getMonth(), v: null }); }
+  for (const s of S.snapshots) { const d = parseYmd(s.date); const mm = months.find(x => x.y === d.getFullYear() && x.m === d.getMonth()); if (mm) mm.v = num(s.net); }
+  months[5].v = t.net;
+  const idx = months.map((x, i) => x.v != null ? i : -1).filter(i => i >= 0);
+  const first = months[idx[0]].v, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
+  const W = 320, H = 130, L = 8, R = 8, T = 12, B = 24;
+  const vals = idx.map(i => months[i].v), lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || Math.max(1, Math.abs(hi) * .1);
+  const X = i => L + (W - L - R) * i / 5, Y = v => T + (H - T - B) * (1 - (v - lo) / span) * .85 + (H - T - B) * .08;
+  const pts = idx.map(i => [X(i), Y(months[i].v)]);
+  let d = pts.length ? `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}` : '';
+  for (let k = 1; k < pts.length; k++) { const [x0, y0] = pts[k - 1], [x1, y1] = pts[k], cx = (x0 + x1) / 2; d += ` C${cx.toFixed(1)} ${y0.toFixed(1)} ${cx.toFixed(1)} ${y1.toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)}`; }
+  const area = pts.length > 1 ? `${d} L${pts[pts.length - 1][0].toFixed(1)} ${H - B} L${pts[0][0].toFixed(1)} ${H - B}Z` : '';
+  const grid = [0, 1, 2].map(k => `<line x1="${L}" x2="${W - R}" y1="${(T + (H - T - B) * k / 2).toFixed(1)}" y2="${(T + (H - T - B) * k / 2).toFixed(1)}" class="ngrid"/>`).join('');
+  const labels = months.map((x, i) => `<text x="${X(i).toFixed(1)}" y="${H - 6}" class="nml">${x.m + 1}月</text>`).join('');
+  const dots = pts.map(([x, y], k) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${k === pts.length - 1 ? 4 : 2.6}" class="ndot${k === pts.length - 1 ? ' last' : ''}"/>`).join('');
+  return `<section class="panel ntrend"><div class="nt-head"><h4>資產走勢</h4><span class="nt-r"><span>近 6 個月</span><b class="${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${Math.abs(chg).toFixed(2)}%</b><span class="nt-ic">${svgI('chart')}</span></span></div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="nchart" role="img" aria-label="近 6 個月淨資產走勢">
+      <defs><linearGradient id="nga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--n-area)"/><stop offset="1" style="stop-color:var(--n-area0)"/></linearGradient></defs>
+      ${grid}${area ? `<path d="${area}" fill="url(#nga)"/>` : ''}<path d="${d}" class="nline"/>${dots}${labels}</svg>
+    ${idx.length < 2 ? '<p class="meta nnote">每天開 App 會自動記一筆，下個月起就會連成走勢線</p>' : ''}</section>`;
+}
+const _ovViewN = VIEWS.overview;
+VIEWS.overview = () => {
+  let h = _ovViewN();
+  if (!isNordic()) return h;
+  const t = splitTotals(), range = S.range || 30;
+  const since = new Date(); since.setDate(since.getDate() - range);
+  const snaps = S.snapshots.filter(s => parseYmd(s.date) >= since).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const first = snaps.length ? num(snaps[0].net) : t.net, chg = first ? (t.net - first) / Math.abs(first) * 100 : 0;
+  const cardDebt = t.debt + t.liab, gross = t.gross || 1;
+  const pc = v => (v / gross * 100);
+  const corner = (pos, k, ic, name, v, act, extra = '') => { const p = pc(v); return `<button class="ncard ${pos}" data-act="${act}" ${extra} style="--nc:var(--c-${k})">
+      <span class="nc-top">${svgI(ic, 'nc-ic')}${svgI('chev', 'nc-ch')}</span><span class="nc-name">${name}</span>
+      <b class="nc-p ${v < 0 ? 'neg' : ''}">${p.toFixed(1)}%</b><span class="nc-v">${money(v)}</span></button>`; };
+  const dash = `<section class="ndash">
+    <div class="nbox">
+      ${corner('tl', 'bank', 'bank', '銀行存款', t.bankOnly, 'goto', 'data-tab="bank"')}
+      ${corner('tr', 'stock', 'chart', '投資資產', t.invest, 'goto', 'data-tab="invest"')}
+      ${corner('bl', 'debt', 'card', '信用卡負債', -cardDebt, 'goto', 'data-tab="cards"')}
+      ${corner('br', 'recv', 'box', '其他資產', t.other, 'acc-other')}
+      <div class="ndial-w">${nordDial(t)}
+        <div class="ncenter"><span>總資產淨值</span><b>${money(t.net)}</b><em class="${chg >= 0 ? 'pos' : 'neg'}">${chg >= 0 ? '↑' : '↓'} ${Math.abs(chg).toFixed(2)}%</em><small>${range === 30 ? '本月' : range === 90 ? '近三個月' : '近一年'}變動</small></div></div>
+    </div></section>${nordTrend()}`;
+  h = h.replace(/<section class="dash">[\s\S]*?<\/section>/, '').replace(/<section class="panel ver-trend">[\s\S]*?<\/section>/, '');
+  return dash + h;
+};
