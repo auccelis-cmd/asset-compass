@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10t';
+const APP_VERSION = '2026.10.10v';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -2830,3 +2830,38 @@ VIEWS.overview = () => {
   h = h.replace(/<section class="dash">[\s\S]*?<\/section>/, '').replace(/<section class="panel ver-trend">[\s\S]*?<\/section>/, '');
   return dash + h;
 };
+
+/* 只保留北歐兩個主題；舊主題自動換成最接近的 */
+THEMES.splice(0, THEMES.length, ...THEMES.filter(x => ['nordic', 'dusk'].includes(x[0])));
+Object.assign(OLD_THEME, { ivory: 'nordic', library: 'dusk', starmap: 'dusk', verdant: 'dusk', green: 'dusk', navy: 'dusk', purple: 'dusk' });
+try { applyTheme(localStorage.getItem('ac_theme') || 'nordic'); } catch (_) { }
+
+/* ---------- 北歐主題：把卡片、帳戶、分類的顏色收斂到同一組柔和色票 ---------- */
+const NORD_PAL = [['#6B8F7A', 146], ['#4F7A68', 160], ['#7E9AAB', 200], ['#6E8196', 220], ['#CF9580', 16], ['#C2A06A', 38], ['#9C8796', 315], ['#A88F7E', 25]];
+function hexHue(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim()); if (!m) return null;
+  const n = parseInt(m[1], 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  let h = 0; if (d) { h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
+  return { h, s };
+}
+function nordColor(input) {
+  let h, s = 1;
+  if (typeof input === 'number') h = input; else { const c = hexHue(input); if (!c) return null; h = c.h; s = c.s; }
+  if (s < .15) return '#A29D94';
+  let best = NORD_PAL[0], bd = 999;
+  for (const p of NORD_PAL) { const dd = Math.min(Math.abs(p[1] - h), 360 - Math.abs(p[1] - h)); if (dd < bd) { bd = dd; best = p; } }
+  return best[0];
+}
+function nordRecolor(root) {
+  if (!isNordic() || !root) return;
+  root.querySelectorAll('[style*="--cc"]').forEach(el => { const v = el.style.getPropertyValue('--cc'); if (v && !el.dataset.nc) { const c = nordColor(v); if (c) { el.dataset.nc = v; el.style.setProperty('--cc', c); } } });
+  root.querySelectorAll('.acc-ic[style*="--h"]').forEach(el => { const h = parseFloat(el.style.getPropertyValue('--h')); if (!isNaN(h)) el.style.setProperty('--nc', nordColor(h)); });
+  root.querySelectorAll('.cat-ic[style*="--c"]').forEach(el => { const v = el.style.getPropertyValue('--c'); const c = nordColor(v); if (c && !el.dataset.nc) { el.dataset.nc = v; el.style.setProperty('--c', c); } });
+}
+try {
+  const mo = new MutationObserver(() => { nordRecolor($('#view')); nordRecolor($('#modal')); });
+  const start = () => { ['#view', '#modal'].forEach(s => { const el = $(s); if (el) mo.observe(el, { childList: true, subtree: true }); }); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+} catch (_) { }

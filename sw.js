@@ -1,6 +1,6 @@
 // 只快取 App 外殼（網路優先，離線時退回快取）；報價與資料一律走網路。
-const CACHE = 'asset-compass-v34';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'lib-hall-top.webp', 'lib-hall-blur.webp', 'ver-bg.webp', 'yuji-ledger.woff2', 'star-bg.webp', 'sky-starmap.webp?v=1', 'sky-verdant.webp?v=1', 'sky-green.webp?v=1', 'sky-navy.webp?v=1', 'sky-purple.webp?v=1', 'sky-library.webp?v=1', 'sky-ivory.webp?v=1'];
+const CACHE = 'asset-compass-v36';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'lib-hall-top.webp', 'lib-hall-blur.webp', 'ver-bg.webp', 'yuji-ledger.woff2', 'star-bg.webp', 'sky-starmap.webp?v=1', 'sky-verdant.webp?v=1', 'sky-green.webp?v=1', 'sky-navy.webp?v=1', 'sky-purple.webp?v=1', 'sky-library.webp?v=1', 'sky-ivory.webp?v=1', 'dusk-bg.webp?v=1'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

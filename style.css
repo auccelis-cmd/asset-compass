@@ -1992,3 +1992,85 @@ html.nord .ndial-w { width: 66%; }
 html.nord .ncenter { top: 51.5%; width: 50%; }
 html.nord .ncenter b { font-size: clamp(15px, 4.6vw, 21px); }
 html.nord .ncenter span { font-size: 11.5px; }
+
+/* 北歐暮色：加背景、整體提亮 */
+html.nord[data-theme="dusk"] { --night: #173E39; --night-2: #1B4540; --panel: rgba(30,72,62,.62); --panel-2: rgba(38,84,72,.7); --n-card: rgba(26,64,56,.58); --n-card-b: rgba(216,190,134,.22); --n-core: #143832; --n-core-hi: #20514A; --muted: #B6C4BD; }
+html.nord[data-theme="dusk"] body { background: #173E39 !important; }
+html.nord[data-theme="dusk"] body::before { background: linear-gradient(rgba(10,30,27,.12), rgba(10,30,27,.2)), url("dusk-bg.webp?v=1") center / cover no-repeat, #173E39 !important; }
+html.nord[data-theme="dusk"] .top { background: rgba(20,52,47,.8) !important; }
+html.nord[data-theme="dusk"] .tabs { background: rgba(20,52,47,.9) !important; }
+html.nord[data-theme="dusk"] .sheet { background: #1A4640 !important; }
+
+/* ===== 北歐：卡面、圖示、日期、按鈕 ===== */
+/* 信用卡卡面：依卡片色、低飽和；右側淡淡羅盤浮水印＋細線 */
+html.nord .cc {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200' fill='none' stroke='white'%3E%3Ccircle cx='100' cy='100' r='92' stroke-opacity='.18' stroke-width='1.2'/%3E%3Ccircle cx='100' cy='100' r='70' stroke-opacity='.12'/%3E%3Cpath d='M100 14 108 92 186 100 108 108 100 186 92 108 14 100 92 92Z' fill='white' fill-opacity='.08' stroke-opacity='.18'/%3E%3C/svg%3E") right -40px center / 66% auto no-repeat,
+    linear-gradient(135deg, color-mix(in srgb, var(--cc) 92%, white) 0%, var(--cc) 45%, color-mix(in srgb, var(--cc) 72%, #1d2a25) 100%) !important;
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--cc) 35%, transparent), inset 0 1px 0 rgba(255,255,255,.25) !important;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 6px; min-height: 196px;
+}
+html.nord[data-theme="dusk"] .cc { background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200' fill='none' stroke='%23E2C894'%3E%3Ccircle cx='100' cy='100' r='92' stroke-opacity='.3' stroke-width='1.2'/%3E%3Ccircle cx='100' cy='100' r='70' stroke-opacity='.18'/%3E%3Cpath d='M100 14 108 92 186 100 108 108 100 186 92 108 14 100 92 92Z' fill='%23E2C894' fill-opacity='.08' stroke-opacity='.3'/%3E%3C/svg%3E") right -40px center / 66% auto no-repeat,
+    linear-gradient(135deg, color-mix(in srgb, var(--cc) 55%, #2a5a4e) 0%, color-mix(in srgb, var(--cc) 30%, #163b35) 100%) !important;
+  box-shadow: inset 0 0 0 1px rgba(216,190,134,.45), 0 14px 28px rgba(0,0,0,.3) !important; }
+html.nord .cc .cc-top { align-items: center; }
+html.nord .cc .cc-name { font-family: var(--title) !important; font-weight: 700 !important; font-size: 16px; letter-spacing: .04em; }
+html.nord .cc .cc-name::before { content: ""; display: inline-block; width: 18px; height: 18px; margin-right: 8px; vertical-align: -3px; background: currentColor; opacity: .9;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8'%3E%3Crect x='2.5' y='5.5' width='19' height='13' rx='2.5'/%3E%3Cpath d='M2.5 10h19M6 15h4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8'%3E%3Crect x='2.5' y='5.5' width='19' height='13' rx='2.5'/%3E%3Cpath d='M2.5 10h19M6 15h4'/%3E%3C/svg%3E") center / contain no-repeat; }
+html.nord .cc .cc-num { margin: 0; font-family: var(--num); }
+html.nord .cc .cc-mid { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+html.nord .cc .cc-mid b { font-size: 32px; line-height: 1.1; }
+html.nord .cc .cc-rew { font-style: normal; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px; background: rgba(255,255,255,.2) !important; color: #fff !important; }
+html.nord .cc .cc-bot { font-size: 12.5px; opacity: .95; align-items: center; }
+html.nord .cc .cc-bot > span:last-child { padding: 3px 10px; border-radius: 99px; background: rgba(255,255,255,.18); font-weight: 600; }
+/* 銀行帳戶圖示：淺色底＋深色字（同色系） */
+html.nord .acc-ic { --nc: #6B8F7A; width: 40px; height: 40px; border-radius: 50% !important; font-size: 15px; font-weight: 700;
+  background: color-mix(in srgb, var(--nc) 16%, var(--n-card, #fff)) !important; color: color-mix(in srgb, var(--nc) 85%, #1d2a25) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nc) 22%, transparent) !important; }
+html.nord[data-theme="dusk"] .acc-ic { background: color-mix(in srgb, var(--nc) 30%, transparent) !important; color: color-mix(in srgb, var(--nc) 30%, #fff) !important; }
+/* 扣款日期方塊 */
+html.nord .date-glyph { width: 46px; height: 50px; border-radius: 14px !important; border: 0 !important; background: color-mix(in srgb, var(--cc) 12%, var(--n-card, #fff)) !important; box-shadow: none !important; }
+html.nord .date-glyph b { font-family: var(--num) !important; font-weight: 700; font-size: 21px; color: color-mix(in srgb, var(--cc) 80%, var(--text)) !important; }
+html.nord .date-glyph small { font-size: 10.5px; color: var(--muted); }
+html.nord[data-theme="dusk"] .date-glyph { background: color-mix(in srgb, var(--cc) 22%, transparent) !important; }
+html.nord[data-theme="dusk"] .date-glyph b { color: color-mix(in srgb, var(--cc) 35%, #fff) !important; }
+/* 消費分類圖示 */
+html.nord .cat-ic { background: color-mix(in srgb, var(--c) 14%, var(--n-card, #fff)) !important; color: color-mix(in srgb, var(--c) 85%, #1d2a25) !important; }
+html.nord[data-theme="dusk"] .cat-ic { background: color-mix(in srgb, var(--c) 26%, transparent) !important; color: color-mix(in srgb, var(--c) 35%, #fff) !important; }
+/* 信用卡列的小圖示 */
+html.nord .crow-ic { border-radius: 12px !important; background: color-mix(in srgb, var(--cc) 14%, var(--n-card, #fff)) !important; color: color-mix(in srgb, var(--cc) 85%, var(--text)) !important; }
+html.nord[data-theme="dusk"] .crow-ic { background: color-mix(in srgb, var(--cc) 26%, transparent) !important; color: color-mix(in srgb, var(--cc) 35%, #fff) !important; }
+/* 按鈕 */
+html.nord .btn { min-height: 42px; padding: 10px 18px; border-radius: 14px !important; font-weight: 600; letter-spacing: .03em; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: transform .12s, box-shadow .2s, background .2s; }
+html.nord .btn.small { min-height: 34px; padding: 6px 14px; border-radius: 99px !important; font-size: 13px; }
+html.nord .btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 88%, white), var(--gold)) !important; color: #fff !important; box-shadow: 0 6px 16px color-mix(in srgb, var(--gold) 35%, transparent) !important; }
+html.nord[data-theme="dusk"] .btn.primary { background: linear-gradient(180deg, #DCC28E, #C2A064) !important; color: #173E39 !important; }
+html.nord .btn.outline, html.nord .btn.ghost { background: var(--n-card) !important; border: 1px solid color-mix(in srgb, var(--gold) 30%, var(--line)) !important; color: var(--accent-text) !important; box-shadow: 0 2px 8px rgba(var(--shadow),.05) !important; }
+html.nord .btn.danger { background: color-mix(in srgb, var(--danger) 10%, var(--n-card)) !important; color: var(--danger) !important; border: 0 !important; }
+html.nord .btn:hover { box-shadow: 0 8px 18px rgba(var(--shadow),.12) !important; }
+html.nord .btn:active { transform: scale(.97); }
+html.nord h2 .btn.small { min-height: 30px; padding: 4px 12px; }
+html.nord .seg-ctl { padding: 4px !important; border-radius: 16px !important; background: var(--panel-2) !important; box-shadow: none !important; }
+html.nord .seg-ctl button { border-radius: 12px; font-weight: 600; color: var(--muted); }
+html.nord .seg-ctl button.on { background: var(--n-card) !important; color: var(--accent-text) !important; box-shadow: 0 2px 8px rgba(var(--shadow),.1); }
+html.nord[data-theme="dusk"] .seg-ctl button.on { background: rgba(216,190,134,.9) !important; color: #173E39 !important; }
+html.nord .qa button .i { width: 50px; height: 50px; padding: 14px; border-radius: 16px; }
+html.nord .qa button span { font-weight: 600; color: var(--text); }
+html.nord .cd-nav .btn, html.nord .icon-btn.ring { border-radius: 99px !important; background: var(--n-card) !important; border: 0 !important; box-shadow: 0 2px 8px rgba(var(--shadow),.08) !important; }
+html.nord .chip-btn { border-radius: 99px; border: 1px solid var(--line); background: var(--n-card); }
+html.nord .chip-btn.on { background: color-mix(in srgb, var(--gold) 14%, var(--n-card)); border-color: var(--gold); color: var(--accent-text); }
+html.nord .empty-cta, html.nord .fold-more { color: var(--accent-text); font-weight: 600; }
+html.nord .acc-ic { background: color-mix(in srgb, var(--nc) 30%, var(--n-card, #fff)) !important; color: color-mix(in srgb, var(--nc) 75%, #1d2a25) !important; box-shadow: none !important; }
+html.nord[data-theme="dusk"] .acc-ic { background: color-mix(in srgb, var(--nc) 55%, #173E39) !important; color: #fff !important; }
+html.nord .date-glyph { background: color-mix(in srgb, var(--cc) 20%, var(--n-card, #fff)) !important; }
+html.nord .date-glyph b { color: color-mix(in srgb, var(--cc) 85%, #1d2a25) !important; }
+html.nord[data-theme="dusk"] .date-glyph { background: color-mix(in srgb, var(--cc) 40%, #173E39) !important; }
+html.nord[data-theme="dusk"] .date-glyph b { color: #fff !important; }
+html.nord .cat-ic { background: color-mix(in srgb, var(--c) 24%, var(--n-card, #fff)) !important; color: color-mix(in srgb, var(--c) 80%, #1d2a25) !important; }
+html.nord[data-theme="dusk"] .cat-ic { background: color-mix(in srgb, var(--c) 45%, #173E39) !important; color: #fff !important; }
+html.nord .crow-ic { background: color-mix(in srgb, var(--cc) 22%, var(--n-card, #fff)) !important; color: color-mix(in srgb, var(--cc) 85%, #1d2a25) !important; }
+html.nord[data-theme="dusk"] .crow-ic { background: color-mix(in srgb, var(--cc) 45%, #173E39) !important; color: #fff !important; }
+html.nord .acc-ic, html.nord[data-theme="dusk"] .acc-ic { background: linear-gradient(145deg, color-mix(in srgb, var(--nc) 85%, white), var(--nc)) !important; color: #fff !important; box-shadow: 0 3px 8px color-mix(in srgb, var(--nc) 30%, transparent) !important; }
+html.nord .date-glyph b { color: color-mix(in srgb, var(--cc) 95%, #1d2a25) !important; }
+html.nord .date-glyph { background: color-mix(in srgb, var(--cc) 24%, var(--n-card, #fff)) !important; }
