@@ -1,10 +1,19 @@
-// 只快取 App 外殼（網路優先）；資料一律走網路
-const CACHE = 'lunaria-v4';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'cycle.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'bg-moss-day.webp', 'bg-moss-night.webp', 'bg-mist-day.webp', 'bg-mist-night.webp', 'bg-blush-day.webp', 'bg-blush-night.webp', 'yuji-luna.woff2'];
-self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+// 只快取 App 外殼（網路優先，離線時退回快取）；報價與資料一律走網路。
+const CACHE = 'asset-compass-v38';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icon.svg', 'lib-hall-top.webp', 'lib-hall-blur.webp', 'ver-bg.webp', 'yuji-ledger.woff2', 'star-bg.webp', 'sky-starmap.webp?v=1', 'sky-verdant.webp?v=1', 'sky-green.webp?v=1', 'sky-navy.webp?v=1', 'sky-purple.webp?v=1', 'sky-library.webp?v=1', 'sky-ivory.webp?v=1', 'dusk-bg.webp?v=1', 'nordic-bg.webp?v=1', 'bg-nordic-mountain.webp?v=1', 'bg-nordic-stars.webp?v=1', 'bg-nordic-tide.webp?v=1', 'bg-nordic-wash.webp?v=1', 'bg-dusk-mountain.webp?v=1', 'bg-dusk-stars.webp?v=1', 'bg-dusk-tide.webp?v=1', 'bg-dusk-wash.webp?v=1'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+});
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-  e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; }).catch(() => caches.match(e.request, { ignoreSearch: true })));
+  e.respondWith(
+    fetch(e.request).then(r => {
+      const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r;
+    }).catch(() => caches.match(e.request))
+  );
 });
