@@ -3,7 +3,7 @@
  * 銀行帳戶 · 信用卡（結算日即扣款日，自動從扣款帳戶扣除）· 台股 · 加密貨幣（手動持倉＋鏈上錢包）
  */
 
-const APP_VERSION = '2026.10.10r';
+const APP_VERSION = '2026.10.10s';
 const CFG = window.ASSET_CONFIG || {};
 const CLOUD = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
 let sb = null, user = null;
@@ -2153,7 +2153,8 @@ THEMES.push(['ivory', '晨光象牙', ['#f8f5ee', '#b98a3e', '#2a2a33']], ['gree
 const OLD_THEME = { champagne: 'ivory', mist: 'ivory', oat: 'ivory', forest: 'green' };
 function applyTheme(t) {
   t = OLD_THEME[t] || t;
-  const th = THEMES.find(x => x[0] === t) || THEMES[0];
+  const th = THEMES.find(x => x[0] === t);
+  if (!th) { document.documentElement.dataset.theme = t; return; } // 主題還沒載入完：先套上，不要覆寫存檔
   document.documentElement.dataset.theme = th[0];
   try { localStorage.setItem('ac_theme', th[0]); } catch (_) { }
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', th[2][0]);
@@ -2744,3 +2745,6 @@ verTrend = function () {
     ${idx.length < 2 ? '<p class="meta v5note">每天開 App 會自動記一筆，下個月起就會連成走勢線</p>' : ''}</section>`;
 };
 function fmtShort(v) { const a = Math.abs(v); return (v < 0 ? '-' : '') + (a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? Math.round(a / 1e3) + 'K' : Math.round(a)); }
+
+/* 所有主題都註冊完後，再套用一次使用者選的主題 */
+try { applyTheme(localStorage.getItem('ac_theme') || 'starmap'); if (typeof render === 'function' && S.user !== undefined) render(); } catch (_) { }
